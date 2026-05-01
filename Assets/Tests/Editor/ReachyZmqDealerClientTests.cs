@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using ReachyMiniTeleop.UI;
 using ReachyMiniTeleop.Transport;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -38,6 +39,67 @@ namespace ReachyMiniTeleop.Tests.Editor
             Assert.IsFalse(ReachyZmqDealerClient.IsValidTcpEndpoint(""));
             Assert.IsFalse(ReachyZmqDealerClient.IsValidTcpEndpoint("localhost:40000"));
             Assert.IsFalse(ReachyZmqDealerClient.IsValidTcpEndpoint("udp://localhost:40000"));
+        }
+
+        [Test]
+        public void TrySetEndpoint_AcceptsValidEndpoint()
+        {
+            Assert.IsTrue(_client.TrySetEndpoint("tcp://192.168.1.20:40000", false));
+
+            Assert.AreEqual("tcp://192.168.1.20:40000", _client.endpoint);
+        }
+
+        [Test]
+        public void TrySetEndpoint_RejectsInvalidEndpointAndKeepsExistingValue()
+        {
+            _client.endpoint = "tcp://localhost:40000";
+
+            Assert.IsFalse(_client.TrySetEndpoint("localhost:40000", false));
+
+            Assert.AreEqual("tcp://localhost:40000", _client.endpoint);
+        }
+
+        [Test]
+        public void TryBuildTcpEndpointFromHost_UsesFixedPort()
+        {
+            Assert.IsTrue(ReachyEndpointInputController.TryBuildTcpEndpointFromHost(
+                "192.168.1.20",
+                ReachyEndpointInputController.DefaultPort,
+                out string endpoint));
+
+            Assert.AreEqual("tcp://192.168.1.20:40000", endpoint);
+        }
+
+        [Test]
+        public void TryBuildTcpEndpointFromHost_TrimsInput()
+        {
+            Assert.IsTrue(ReachyEndpointInputController.TryBuildTcpEndpointFromHost(
+                "  192.168.1.20  ",
+                ReachyEndpointInputController.DefaultPort,
+                out string endpoint));
+
+            Assert.AreEqual("tcp://192.168.1.20:40000", endpoint);
+        }
+
+        [Test]
+        public void TryBuildTcpEndpointFromHost_RejectsInvalidHostInput()
+        {
+            Assert.IsFalse(ReachyEndpointInputController.TryBuildTcpEndpointFromHost(
+                "",
+                ReachyEndpointInputController.DefaultPort,
+                out _));
+            Assert.IsFalse(ReachyEndpointInputController.TryBuildTcpEndpointFromHost(
+                "tcp://192.168.1.20",
+                ReachyEndpointInputController.DefaultPort,
+                out _));
+            Assert.IsFalse(ReachyEndpointInputController.TryBuildTcpEndpointFromHost(
+                "192.168.1.20:40000",
+                ReachyEndpointInputController.DefaultPort,
+                out _));
+            Assert.IsFalse(ReachyEndpointInputController.TryBuildTcpEndpointFromHost(
+                "not a host?",
+                ReachyEndpointInputController.DefaultPort,
+                out _));
         }
 
         [Test]

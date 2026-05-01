@@ -55,6 +55,8 @@ The runtime object uses:
 - `ReachyZmqDealerClient`
 - `DebugReachyPayloadLogger`
 
+The scene menu includes a `Robot IP` input. Enter only the Reachy bridge host, such as `192.168.1.20`; the app builds `tcp://<host>:40000` at runtime when `Connect With Pose Data` is enabled. The last successfully used host is saved with `PlayerPrefs` and restored on the next launch.
+
 Default config:
 
 - Endpoint: `tcp://localhost:40000`
@@ -133,7 +135,9 @@ For a real Quest build:
 4. Enable `QuestTrackingProvider_Template`.
 5. Assign `CenterCamAnchor`, `CenterEyeFront`, `CenterEyeUp`, and optional hand skeleton references on `MetaBodySkeletonProvider`.
 6. Set `ReachyHeadCommandPublisher.skeletonProviderBehaviour` to `MetaBodySkeletonProvider`.
-7. Set `ReachyTeleopConfig.endpoint` to the Reachy bridge address, for example `tcp://192.168.1.20:40000`.
+7. Enter the Reachy bridge IP in the scene menu and enable `Connect With Pose Data`. Port `40000` is fixed in the UI; `ReachyTeleopConfig.endpoint` remains the fallback default.
+
+Changing the UI endpoint does not change the Reachy payload JSON, coordinate conversion, or ZMQ multipart framing.
 
 If the `MetaSourceDataProvider` component is missing after package restore, add it from the Meta XR Movement package to `QuestTrackingProvider_Template`.
 

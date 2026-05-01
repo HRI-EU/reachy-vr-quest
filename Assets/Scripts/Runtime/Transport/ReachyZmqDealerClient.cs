@@ -110,6 +110,30 @@ namespace ReachyMiniTeleop.Transport
             return uri.Scheme == "tcp" && !string.IsNullOrWhiteSpace(uri.Host) && uri.Port > 0 && uri.Port <= 65535;
         }
 
+        public bool TrySetEndpoint(string value, bool restartIfRunning)
+        {
+            if (!IsValidTcpEndpoint(value))
+                return false;
+
+            string trimmedEndpoint = value.Trim();
+            bool wasRunning = _running;
+
+            if (wasRunning)
+            {
+                if (!restartIfRunning)
+                    return false;
+
+                StopClient();
+            }
+
+            endpoint = trimmedEndpoint;
+
+            if (wasRunning)
+                StartClient();
+
+            return true;
+        }
+
         public void StartClient()
         {
             if (_running)
