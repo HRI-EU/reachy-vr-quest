@@ -185,7 +185,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aaaaaaaa000000000000000000000003, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  skeletonProviderBehaviour: {fileID: 3003}
+  skeletonProviderBehaviour: {fileID: 2002}
   zmqDealerClient: {fileID: 1002}
   config: {fileID: 11400000, guid: bbbbbbbb000000000000000000000001, type: 2}
   publishOnEnable: 1
@@ -220,7 +220,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &2001
 Transform:
   m_ObjectHideFlags: 0
@@ -269,7 +269,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &3001
 Transform:
   m_ObjectHideFlags: 0
@@ -1227,10 +1227,10 @@ MonoBehaviour:
   launchSimultaneousHandsControllersOnStartup: 0
   isInsightPassthroughEnabled: 1
   shouldBoundaryVisibilityBeSuppressed: 0
-  requestBodyTrackingPermissionOnStartup: 1
+  requestBodyTrackingPermissionOnStartup: 0
   requestFaceTrackingPermissionOnStartup: 0
   requestEyeTrackingPermissionOnStartup: 0
-  requestScenePermissionOnStartup: 1
+  requestScenePermissionOnStartup: 0
   requestRecordAudioPermissionOnStartup: 0
   requestPassthroughCameraAccessPermissionOnStartup: 0
   _localDimming: 1
