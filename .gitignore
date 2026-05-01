@@ -1,0 +1,29 @@
+# Unity generated folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+
+# IDE and generated project files
+.vs/
+.vscode/
+*.csproj
+*.sln
+*.slnx
+*.user
+*.pidb
+*.booproj
+
+# NuGetForUnity restored package payloads
+Assets/Packages/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Local test outputs
+TestResults.xml
+ReachyEditModeTestSummary.txt
