@@ -15,11 +15,11 @@ using WebSocketSharp;
 public class WebRTCClient : MonoBehaviour
 {
     [Header("UI")]
-    public RawImage receiveRawImage;     // Canvas 上的 RawImage（用于显示远端视频）
-    public GameObject holoOverlay;       // 你原来的 overlay，可选
+    public RawImage receiveRawImage;     // RawImage on the Canvas, used to display remote video.
+    public GameObject holoOverlay;       // Optional existing overlay.
 
     [Header("Signaling (LAN)")]
-    public string signalingUrl = "ws://127.0.0.1:8766"; // Quest 上改 PC 局域网 IP
+    public string signalingUrl = "ws://127.0.0.1:8766"; // Use the PC LAN IP on Quest.
 
     [Tooltip("Input field for user-provided address (e.g., 10.0.71.38:8766)")]
     [SerializeField] private TMP_InputField userInputAddress;
@@ -30,11 +30,11 @@ public class WebRTCClient : MonoBehaviour
     private string pendingOfferSdp;
     private bool isConnecting;
 
-    // WebRTC.Update() 常驻
+    // Keep WebRTC.Update() running.
     private Coroutine webrtcUpdateCoroutine;
     private Coroutine connectCoroutine;
 
-    // WebRTC 3.0: OnVideoReceived 通常只用于首次绑定
+    // WebRTC 3.0: OnVideoReceived is usually only used for the initial binding.
     private bool boundVideoTexture = false;
 
     // Debug counters
@@ -66,13 +66,13 @@ public class WebRTCClient : MonoBehaviour
 
         SetupPeerConnection();
 
-        // WebRTC.Update() 建议常驻（WebRTC 3.0）
+        // WebRTC.Update() should keep running in WebRTC 3.0.
         if (webrtcUpdateCoroutine == null)
             webrtcUpdateCoroutine = StartCoroutine(WebRTC.Update());
     }
 
     /// <summary>
-    /// 解析用户输入的地址（格式：IP:PORT，例如 10.0.71.38:8766）
+    /// Parses the user-provided address in IP:PORT format, for example 10.0.71.38:8766.
     /// </summary>
     private bool TryParseAddress(string input, out string ip, out int port)
     {
@@ -124,12 +124,12 @@ public class WebRTCClient : MonoBehaviour
 
             if (e.Track is VideoStreamTrack v)
             {
-                // WebRTC 3.0：此回调很多情况下只触发一次（第一帧）
+                // WebRTC 3.0: this callback often fires only once, on the first frame.
                 v.OnVideoReceived += tex =>
                 {
                     if (tex == null) return;
 
-                    // 统计回调频率（帮助判断是否只来一次）
+                    // Count callback frequency to help determine whether it only fires once.
                     onVideoReceivedCount++;
                     if (Time.time - lastOnVideoLogTime > 1f)
                     {
@@ -140,7 +140,7 @@ public class WebRTCClient : MonoBehaviour
 
                     mainThread.Enqueue(() =>
                     {
-                        // 只绑定一次纹理（符合 3.0 的常见行为）
+                        // Bind the texture only once, matching the common WebRTC 3.0 behavior.
                         if (!boundVideoTexture)
                         {
                             boundVideoTexture = true;
@@ -150,7 +150,7 @@ public class WebRTCClient : MonoBehaviour
                                 receiveRawImage.texture = tex;
                                 receiveRawImage.enabled = true;
 
-                                // 可选：保持比例（如果你给 RawImage 加了 AspectRatioFitter 组件）
+                                // Optional: preserve the aspect ratio if the RawImage has an AspectRatioFitter component.
                                 // var fitter = receiveRawImage.GetComponent<AspectRatioFitter>();
                                 // if (fitter != null) fitter.aspectRatio = (float)tex.width / tex.height;
 
@@ -195,7 +195,7 @@ public class WebRTCClient : MonoBehaviour
         if (pc == null)
             SetupPeerConnection();
 
-        // 每次新连接允许重新绑定一次纹理
+        // Allow the texture to be rebound once for each new connection.
         boundVideoTexture = false;
         ShowVideoSurface(true);
         isConnecting = true;
@@ -290,7 +290,7 @@ public class WebRTCClient : MonoBehaviour
     }
 
     /// <summary>
-    /// 用户点击按钮时调用：切换连接/断开
+    /// Called when the user clicks the button to toggle connection or disconnection.
     /// </summary>
     public void ToggleConnect()
     {
@@ -307,7 +307,7 @@ public class WebRTCClient : MonoBehaviour
     }
 
     /// <summary>
-    /// 解析用户输入地址并连接（格式：IP:PORT）
+    /// Parses the user-provided address and connects in IP:PORT format.
     /// </summary>
     private void UserConnectWithAddress()
     {
