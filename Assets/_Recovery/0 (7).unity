@@ -2015,9 +2015,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   target: {fileID: 1158962126}
-  viewOffset: {x: 0, y: -0.7, z: 0.5}
+  viewOffset: {x: 0, y: -0.45, z: 0.75}
   pitchDegrees: 40
-  angularDeadZoneDegrees: 15
+  angularDeadZoneDegrees: 8
   positionDeadZoneMeters: 0.05
   positionSmoothTime: 0.18
   rotationSmoothSpeed: 10

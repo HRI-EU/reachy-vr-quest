@@ -43,6 +43,12 @@
   - Uses an in-scene numeric keypad for Quest/XR Simulation. Do not rely on `TouchScreenKeyboard` as the primary input path.
   - Last successful host is saved with `PlayerPrefs`.
 
+- `Assets/Scripts/Runtime/UI/HeadFollowMenu.cs`
+  - Lightweight yaw-only floating follow behavior for the world-space `MainMenu`.
+  - Attached to the root `MainMenu` and targets `CenterEyeAnchor`; falls back to `Camera.main`.
+  - Uses a below-view offset, angular dead zone, position dead zone, and smooth easing so the menu follows the headset without feeling head-locked.
+  - Keep pose/dead-zone math testable through static helpers; `RecenterNow()` should snap the menu under the current view when needed.
+
 - `Assets/Scripts/Runtime/UI/ReachyVideoInputController.cs`
   - Runtime video UI controller for the world-space `MainMenu`.
   - `ConnectVideo` is a Toggle, not a plain Button: on toggles WebRTC video on, off disconnects.
@@ -101,4 +107,5 @@
 - Do not commit generated folders: `Library`, `Temp`, `Logs`, `UserSettings`, `Assets/Packages`.
 - Update README and tests together if payload shape, coordinate conversion, or ZMQ framing changes.
 - Keep Quest IP entry on the in-scene keypad path; Android/Quest system keyboard did not work reliably for this world-space UI.
+- Keep `MainMenu` as a world-space Meta Interaction UI with `HeadFollowMenu`; do not parent it directly under the camera or replace the existing UI interaction stack with XR Interaction Toolkit unless explicitly requested.
 - Keep Meta Immersive Debugger disabled for this demo unless explicitly debugging it; its `PanelInputModule` can throw invalid quaternion errors in XR Simulation.
