@@ -1,111 +1,42 @@
 # ReachyMiniTeleop Agent Guide
 
-## Project Snapshot
+## Project
 
-- `ReachyMiniTeleop` is a clean open-source Unity split-out for Quest-to-Reachy Mini teleoperation.
-- Unity version: `6000.3.9f1`.
-- License: Apache-2.0.
-- Core path: skeleton provider -> Reachy payload builder -> ZMQ DEALER -> Reachy Mini ROUTER bridge.
+- Unity `6000.3.9f1`, Apache-2.0, Quest to Reachy Mini teleop.
+- Main path: skeleton provider -> Reachy payload builder -> ZMQ DEALER -> Reachy Mini ROUTER bridge.
+- Main scene: `Assets/Scenes/ReachyMiniTeleop.unity`.
+- Default config: `Assets/Config/ReachyTeleopConfig.asset` (`tcp://localhost:40000`, identity `body`, `30 Hz`).
+- Local receiver: `Tools/mock_reachy_router.py`.
 
-## Key Files
+## Runtime UI
 
-- `Assets/Scenes/ReachyMiniTeleop.unity`
-  - Main demo scene.
-  - `MockSkeletonProvider` is active by default for no-headset testing.
-  - `QuestTrackingProvider_Template` is inactive and should be wired for real Quest tracking.
+- Users enter only a host/IP in `RobotIpInput`, never a scheme, port, or path.
+- Pose data uses `tcp://<host>:40000`; video signaling uses `ws://<host>:8766`.
+- `Connect With Pose Data` and `ConnectVideo` are Toggles; the last successful host is saved with `PlayerPrefs`.
+- Keep IP entry on the in-scene keypad path for Quest/XR Simulation. `TouchScreenKeyboard` is optional fallback, not the primary path.
+- `MainMenu` is a world-space Meta Interaction UI with `HeadFollowMenu`; do not parent it directly under the camera or replace the interaction stack unless asked.
 
-- `Assets/Config/ReachyTeleopConfig.asset`
-  - Public default config: `tcp://localhost:40000`, identity `body`, 30 Hz, body yaw limit 45 degrees, antenna max 90 degrees.
+## Protocol
 
-- `Assets/Scripts/Runtime/Reachy`
-  - `ReachyHeadCommandBuilder`: pure payload math and payload construction.
-  - `ReachyHeadCommandPublisher`: Unity lifecycle, publish loop, JSON serialization.
-  - `CoordinateFrameUtil`: Unity RUF -> robot FLU conversion.
-  - `IReachySkeletonProvider`: interface for real and mock tracking.
-
-- `Assets/Scripts/Runtime/Tracking/MetaBodySkeletonProvider.cs`
-  - Meta XR Movement `MetaSourceDataProvider` wrapper plus OpenXR hand stitch.
-
-- `Assets/Scripts/Runtime/Transport/ReachyZmqDealerClient.cs`
-  - ZMQ DEALER transport.
-  - Requires NetMQ from NuGetForUnity restore; missing NetMQ DLLs should fail compilation rather than running a fake transport.
-
-- `Assets/Scripts/Runtime/Transport/WebRTCClient.cs`
-  - WebRTC receive-only video client for the Reachy camera stream.
-  - Uses Unity WebRTC plus WebSocketSharp signaling.
-  - Default signaling URL is `ws://127.0.0.1:8766`; Quest builds should connect to the PC/robot host IP, not `localhost`.
-  - Binds the first remote `VideoStreamTrack` texture to the in-scene video `RawImage`.
-  - On signaling close/error, clears the `RawImage`, closes the peer connection, and lets UI reset the video toggle.
-
-- `Assets/Scripts/Runtime/UI/ReachyEndpointInputController.cs`
-  - Runtime Robot IP UI controller for the world-space `MainMenu`.
-  - Users enter only the host/IP; the controller builds `tcp://<host>:40000`.
-  - Uses an in-scene numeric keypad for Quest/XR Simulation. Do not rely on `TouchScreenKeyboard` as the primary input path.
-  - Last successful host is saved with `PlayerPrefs`.
-
-- `Assets/Scripts/Runtime/UI/HeadFollowMenu.cs`
-  - Lightweight yaw-only floating follow behavior for the world-space `MainMenu`.
-  - Attached to the root `MainMenu` and targets `CenterEyeAnchor`; falls back to `Camera.main`.
-  - Uses a below-view offset, angular dead zone, position dead zone, and smooth easing so the menu follows the headset without feeling head-locked.
-  - Keep pose/dead-zone math testable through static helpers; `RecenterNow()` should snap the menu under the current view when needed.
-
-- `Assets/Scripts/Runtime/UI/ReachyVideoInputController.cs`
-  - Runtime video UI controller for the world-space `MainMenu`.
-  - `ConnectVideo` is a Toggle, not a plain Button: on toggles WebRTC video on, off disconnects.
-  - Reuses the existing Robot IP input host and builds `ws://<host>:8766`.
-  - Keep video IP entry on the existing in-scene keypad path; do not add a separate Quest keyboard path unless explicitly requested.
-
-- `Tools/mock_reachy_router.py`
-  - Python ROUTER receiver for local testing.
-
-## Video Stream
-
-- Unity receives video through WebRTC signaling over WebSocket at `ws://<robot-or-pc-host>:8766`.
-- The Python video bridge default is `--signal-port 8766`; keep Unity's `ReachyVideoInputController.DefaultSignalingPort` aligned with that backend default.
-- The `ConnectVideo` Toggle uses the same host typed into `RobotIpInput`; users should enter only the host/IP, not `ws://`, not a port, and not a path.
-- In Quest builds, `localhost` means the headset and will not reach a bridge running on the PC. Use the PC/robot LAN IP.
-- The video surface should become visible when connection starts, then clear/hide when signaling fails or disconnects.
-
-## Protocol And Coordinates
-
-- Unity sends DEALER multipart messages as:
-
-```text
-[empty frame, JSON payload]
-```
-
-- Payload shape:
-
-```json
-{
-  "body_yaw_degrees": 0.0,
-  "head_position": { "x": 0.0, "y": 0.0, "z": 0.0 },
-  "head_rotation": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0 },
-  "antennas": { "right": 0.0, "left": 0.0 }
-}
-```
-
-- Unity input is RUF: x right, y up, z forward.
-- Robot output is FLU: x forward, y left, z up.
+- ZMQ messages are DEALER multipart frames: `[empty frame, JSON payload]`.
+- Payload keys: `body_yaw_degrees`, `head_position`, `head_rotation`, `antennas`.
+- Unity input is RUF; robot output is FLU.
 - Position conversion is `(x, y, z) -> (z, -x, y)`.
 - Keep frame conversion in `CoordinateFrameUtil`; keep payload math in `ReachyHeadCommandBuilder`.
 
-## Testing
-- Prefer Unity MCP tooling for validation, inspection, and editor-safe automation when useful
-- Editor tests are in `Assets/Tests/Editor`.
-- Preferred batch command:
+## Video
 
-```powershell
-& 'C:\Program Files\Unity\Hub\Editor\6000.3.9f1\Editor\Unity.exe' -batchmode -nographics -logFile 'C:\Users\Public\UnityProjects\ReachyMiniTeleop\Logs\EditModeTests.log' -projectPath 'C:\Users\Public\UnityProjects\ReachyMiniTeleop' -executeMethod ReachyMiniTeleop.Tests.Editor.ReachyBatchTestRunner.RunEditMode
-```
+- Unity receives the Reachy camera stream through WebRTC signaling at `ws://<robot-or-pc-host>:8766`.
+- Keep `ReachyVideoInputController.DefaultSignalingPort` aligned with the Python bridge default `--signal-port 8766`.
+- In Quest builds, `localhost` means the headset. Use the PC/robot LAN IP.
+- The video surface should show while connecting/connected and clear/hide on signaling failure or disconnect.
 
-- Batch summary output: `ReachyEditModeTestSummary.txt` (ignored by git).
+## Tests And Guardrails
+
+- Prefer Unity MCP for editor-safe inspection or validation when useful; editor tests live in `Assets/Tests/Editor`.
+- Batch test method: `ReachyMiniTeleop.Tests.Editor.ReachyBatchTestRunner.RunEditMode`; summary: `ReachyEditModeTestSummary.txt`.
 - Last known validation: `passed=20`, `failed=0`, `skipped=0`.
-
-## Guardrails
-
+- Update README and tests together if payload shape, coordinate conversion, ports, or ZMQ framing change.
+- NetMQ is required. Do not add fake fallback transports when NuGet DLLs are missing.
 - Do not commit generated folders: `Library`, `Temp`, `Logs`, `UserSettings`, `Assets/Packages`.
-- Update README and tests together if payload shape, coordinate conversion, or ZMQ framing changes.
-- Keep Quest IP entry on the in-scene keypad path; Android/Quest system keyboard did not work reliably for this world-space UI.
-- Keep `MainMenu` as a world-space Meta Interaction UI with `HeadFollowMenu`; do not parent it directly under the camera or replace the existing UI interaction stack with XR Interaction Toolkit unless explicitly requested.
-- Keep Meta Immersive Debugger disabled for this demo unless explicitly debugging it; its `PanelInputModule` can throw invalid quaternion errors in XR Simulation.
+- Keep Meta Immersive Debugger disabled unless explicitly debugging it; its `PanelInputModule` can throw invalid quaternion errors in XR Simulation.
