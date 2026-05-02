@@ -15,7 +15,7 @@ MonoBehaviour:
   endpoint: tcp://localhost:40000
   identity: body
   heartbeatInterval: 2
-  sendRateHz: 10
+  sendRateHz: 30
   sendBodyYaw: 1
   sendAntennas: 1
   bodyYawLimitDegrees: 45
@@ -24,4 +24,3 @@ MonoBehaviour:
   antennaMaxDegrees: 90
   invertLeftAntenna: 1
   invertRightAntenna: 1
-

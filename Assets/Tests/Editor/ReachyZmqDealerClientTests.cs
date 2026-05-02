@@ -103,6 +103,53 @@ namespace ReachyMiniTeleop.Tests.Editor
         }
 
         [Test]
+        public void TryBuildSignalingUrlFromHost_UsesVideoPort()
+        {
+            Assert.IsTrue(ReachyVideoInputController.TryBuildSignalingUrlFromHost(
+                "192.168.1.20",
+                ReachyVideoInputController.DefaultSignalingPort,
+                out string signalingUrl));
+
+            Assert.AreEqual("ws://192.168.1.20:8766", signalingUrl);
+        }
+
+        [Test]
+        public void TryBuildSignalingUrlFromHost_AcceptsLocalhost()
+        {
+            Assert.IsTrue(ReachyVideoInputController.TryBuildSignalingUrlFromHost(
+                "localhost",
+                ReachyVideoInputController.DefaultSignalingPort,
+                out string signalingUrl));
+
+            Assert.AreEqual("ws://localhost:8766", signalingUrl);
+        }
+
+        [Test]
+        public void TryBuildSignalingUrlFromHost_RejectsInvalidInput()
+        {
+            Assert.IsFalse(ReachyVideoInputController.TryBuildSignalingUrlFromHost(
+                "",
+                ReachyVideoInputController.DefaultSignalingPort,
+                out _));
+            Assert.IsFalse(ReachyVideoInputController.TryBuildSignalingUrlFromHost(
+                "ws://192.168.1.20",
+                ReachyVideoInputController.DefaultSignalingPort,
+                out _));
+            Assert.IsFalse(ReachyVideoInputController.TryBuildSignalingUrlFromHost(
+                "192.168.1.20:8766",
+                ReachyVideoInputController.DefaultSignalingPort,
+                out _));
+            Assert.IsFalse(ReachyVideoInputController.TryBuildSignalingUrlFromHost(
+                "192.168.1.20/",
+                ReachyVideoInputController.DefaultSignalingPort,
+                out _));
+            Assert.IsFalse(ReachyVideoInputController.TryBuildSignalingUrlFromHost(
+                "192.168.1.20",
+                0,
+                out _));
+        }
+
+        [Test]
         public void SendMessageToServer_QueuesNonEmptyPayload()
         {
             _client.SendMessageToServer("{\"ok\":true}");

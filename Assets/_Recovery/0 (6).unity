@@ -957,8 +957,8 @@ Transform:
   m_GameObject: {fileID: 262179219}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 1}
-  m_LocalScale: {x: 0.015, y: 0.015, z: 0.015}
+  m_LocalPosition: {x: 0, y: 0, z: 2}
+  m_LocalScale: {x: 0.3, y: 0.3, z: 0.3}
   m_ConstrainProportionsScale: 1
   m_Children:
   - {fileID: 281643849}
@@ -1160,7 +1160,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::WebRTCClient
   receiveRawImage: {fileID: 199260755}
   holoOverlay: {fileID: 0}
-  signalingUrl: ws://127.0.0.1:8766
+  signalingUrl: ws://127.0.0.1:8765
   userInputAddress: {fileID: 0}
 --- !u!4 &398832651
 Transform:
@@ -1192,7 +1192,7 @@ MonoBehaviour:
   connectVideoToggle: {fileID: 1266015580}
   robotIpInput: {fileID: 1173676043}
   webRtcClient: {fileID: 398832650}
-  signalingPort: 8766
+  signalingPort: 8765
 --- !u!1 &438944559
 GameObject:
   m_ObjectHideFlags: 0
@@ -3404,10 +3404,6 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7337424845847758855, guid: 5292db714b0f87045a7dfd9be93b1be5, type: 3}
-      propertyPath: m_Sprite
-      value: 
-      objectReference: {fileID: -6640858976124669667, guid: 64f884351318b694f942625580e64a8b, type: 3}
-    - target: {fileID: 7337424845847758855, guid: 5292db714b0f87045a7dfd9be93b1be5, type: 3}
       propertyPath: m_Color.a
       value: 0.9019608
       objectReference: {fileID: 0}
@@ -5235,10 +5231,6 @@ PrefabInstance:
       propertyPath: m_AnchoredPosition.y
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 7337424845847758855, guid: 5292db714b0f87045a7dfd9be93b1be5, type: 3}
-      propertyPath: m_Sprite
-      value: 
-      objectReference: {fileID: -4249139810748981324, guid: 64f884351318b694f942625580e64a8b, type: 3}
     - target: {fileID: 7337424845847758855, guid: 5292db714b0f87045a7dfd9be93b1be5, type: 3}
       propertyPath: m_Color.a
       value: 0.9019608
