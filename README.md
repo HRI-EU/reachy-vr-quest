@@ -198,4 +198,4 @@ Batch summary is written to `ReachyEditModeTestSummary.txt`, which is ignored by
 
 ## License
 
-Apache-2.0.
+Released under the [MIT License](LICENSE).
