@@ -7,6 +7,7 @@
 [Ll]ogs/
 [Uu]ser[Ss]ettings/
 .utmp/
+_Recovery
 
 # IDE and generated project files
 .vs/
