@@ -1,9 +1,9 @@
 {
   "dependencies": {
-    "com.coplaydev.unity-mcp": "https://github.com/CoplayDev/unity-mcp.git?path=/MCPForUnity",
     "com.github-glitchenzo.nugetforunity": "https://github.com/GlitchEnzo/NuGetForUnity.git?path=/src/NuGetForUnity",
     "com.meta.xr.sdk.all": "201.0.0",
     "com.meta.xr.sdk.movement": "https://github.com/oculus-samples/Unity-Movement.git",
+    "com.unity.ai.assistant": "2.7.0-pre.3",
     "com.unity.ide.visualstudio": "2.0.27",
     "com.unity.nuget.newtonsoft-json": "3.2.2",
     "com.unity.test-framework": "1.6.0",
