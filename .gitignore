@@ -19,6 +19,9 @@ _Recovery
 *.pidb
 *.booproj
 
+# Unity generated meta files
+AGENTS.md
+
 # NuGetForUnity restored package payloads
 Assets/Packages/
 
