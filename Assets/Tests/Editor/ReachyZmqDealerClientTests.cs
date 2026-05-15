@@ -1,7 +1,11 @@
+using System;
+using System.Reflection;
+using System.Threading;
 using NUnit.Framework;
 using ReachyMiniTeleop.UI;
 using ReachyMiniTeleop.Transport;
 using UnityEngine;
+using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 
 namespace ReachyMiniTeleop.Tests.Editor
@@ -222,6 +226,135 @@ namespace ReachyMiniTeleop.Tests.Editor
             _daemonClient.SendMessageToServer("{\"n\":2}");
 
             Assert.AreEqual(1, _daemonClient.PendingSendCount);
+        }
+
+        [Test]
+        public void DaemonStartClient_StartsWorkerThreadAndSetsConnectingState()
+        {
+            _daemonClient.autoWakeOnStart = false;
+            using var workerStarted = new ManualResetEventSlim(false);
+            using var releaseWorker = new ManualResetEventSlim(false);
+            SetDaemonWorkerOverride((_, _) =>
+            {
+                workerStarted.Set();
+                releaseWorker.Wait(1000);
+            });
+
+            _daemonClient.StartClient();
+
+            Assert.IsTrue(workerStarted.Wait(1000));
+            Assert.IsTrue(_daemonClient.IsConnectedOrConnecting);
+
+            releaseWorker.Set();
+            _daemonClient.StopClient();
+        }
+
+        [Test]
+        public void DaemonSendMessageToServer_SignalsWorker()
+        {
+            _daemonClient.SendMessageToServer("{\"ok\":true}");
+
+            Assert.AreEqual(1, GetDaemonField<int>("sendSignalSetCountForTests"));
+        }
+
+        [Test]
+        public void DaemonWorker_DequeuesNewestPayloadOnly()
+        {
+            _daemonClient.SendMessageToServer("{\"n\":1}");
+            _daemonClient.SendMessageToServer("{\"n\":2}");
+
+            Assert.IsTrue(InvokeTryDequeueLatestOutgoing(out string latest));
+
+            Assert.AreEqual("{\"n\":2}", latest);
+            Assert.AreEqual(0, _daemonClient.PendingSendCount);
+        }
+
+        [Test]
+        public void DaemonStopClient_RequestsWorkerStopAndClearsState()
+        {
+            _daemonClient.autoWakeOnStart = false;
+            var stopSignal = GetDaemonField<ManualResetEventSlim>("_stopSignal");
+            using var workerStarted = new ManualResetEventSlim(false);
+            using var workerStopped = new ManualResetEventSlim(false);
+            SetDaemonWorkerOverride((_, _) =>
+            {
+                workerStarted.Set();
+                stopSignal.Wait(1000);
+                workerStopped.Set();
+            });
+
+            _daemonClient.StartClient();
+            Assert.IsTrue(workerStarted.Wait(1000));
+
+            _daemonClient.StopClient();
+
+            Assert.IsTrue(workerStopped.Wait(1000));
+            Assert.IsFalse(_daemonClient.IsConnectedOrConnecting);
+        }
+
+        [Test]
+        public void DaemonWorkerError_QueuesWarningForMainThread()
+        {
+            _daemonClient.autoWakeOnStart = false;
+            SetDaemonWorkerOverride((_, _) => throw new InvalidOperationException("boom"));
+
+            _daemonClient.StartClient();
+            WaitForDaemonWorkerExit();
+
+            LogAssert.Expect(LogType.Warning, "[ReachyDaemonTargetWebSocketClient] Worker error: boom");
+            InvokeDaemonUpdate();
+        }
+
+        private void SetDaemonWorkerOverride(Action<string, int> workerLoop)
+        {
+            SetDaemonField("workerLoopOverride", workerLoop);
+        }
+
+        private bool InvokeTryDequeueLatestOutgoing(out string latest)
+        {
+            MethodInfo method = typeof(ReachyDaemonTargetWebSocketClient).GetMethod(
+                "TryDequeueLatestOutgoing",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(method, "Missing private TryDequeueLatestOutgoing method.");
+
+            object[] args = { null };
+            bool result = (bool)method.Invoke(_daemonClient, args);
+            latest = (string)args[0];
+            return result;
+        }
+
+        private void InvokeDaemonUpdate()
+        {
+            MethodInfo update = typeof(ReachyDaemonTargetWebSocketClient).GetMethod(
+                "Update",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(update, "Missing private Update method.");
+            update.Invoke(_daemonClient, null);
+        }
+
+        private T GetDaemonField<T>(string fieldName)
+        {
+            FieldInfo field = typeof(ReachyDaemonTargetWebSocketClient).GetField(
+                fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field, $"Missing field {fieldName}.");
+            return (T)field.GetValue(_daemonClient);
+        }
+
+        private void SetDaemonField(string fieldName, object value)
+        {
+            FieldInfo field = typeof(ReachyDaemonTargetWebSocketClient).GetField(
+                fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field, $"Missing field {fieldName}.");
+            field.SetValue(_daemonClient, value);
+        }
+
+        private void WaitForDaemonWorkerExit()
+        {
+            Thread worker = GetDaemonField<Thread>("_workerThread");
+            if (worker != null)
+                worker.Join(1000);
         }
     }
 }

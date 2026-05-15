@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Threading;
 using ReachyMiniTeleop.Reachy;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -23,6 +24,7 @@ namespace ReachyMiniTeleop.Transport
 
         [Header("Queue")]
         public int maxQueuedMessages = 5;
+        [Tooltip("Legacy sync-send cap. Worker-thread sending drains the queue to the newest payload instead.")]
         public int maxSendsPerFrame = 1;
 
         [Header("HTTP")]
@@ -33,12 +35,24 @@ namespace ReachyMiniTeleop.Transport
 
         private readonly ConcurrentQueue<string> _outgoingQueue = new ConcurrentQueue<string>();
         private readonly ConcurrentQueue<string> _incomingQueue = new ConcurrentQueue<string>();
-        private WebSocket _webSocket;
+        private readonly ConcurrentQueue<MainThreadLog> _mainThreadLogs = new ConcurrentQueue<MainThreadLog>();
+        private readonly ConcurrentQueue<bool> _connectionStateQueue = new ConcurrentQueue<bool>();
+        private readonly ManualResetEventSlim _stopSignal = new ManualResetEventSlim(false);
+        private readonly AutoResetEvent _sendSignal = new AutoResetEvent(false);
         private Coroutine _wakeCoroutine;
-        private bool _isConnecting;
+        private Thread _workerThread;
+        private volatile bool _running;
+        private volatile bool _isConnecting;
+        private volatile bool _isAlive;
+        private int _workerGeneration;
 
-        public bool IsRunning => _webSocket != null && _webSocket.IsAlive;
-        public bool IsConnectedOrConnecting => _isConnecting || IsRunning;
+#if UNITY_EDITOR
+        internal Action<string, int> workerLoopOverride;
+        internal int sendSignalSetCountForTests;
+#endif
+
+        public bool IsRunning => _isAlive;
+        public bool IsConnectedOrConnecting => _isConnecting || _isAlive;
         public int PendingSendCount => _outgoingQueue.Count;
 
         private void Start()
@@ -55,25 +69,17 @@ namespace ReachyMiniTeleop.Transport
                     OnReceiveData?.Invoke(message);
             }
 
-            if (!IsRunning)
-                return;
-
-            int sent = 0;
-            while (sent < Mathf.Max(1, maxSendsPerFrame) && _outgoingQueue.TryDequeue(out var data))
+            while (_mainThreadLogs.TryDequeue(out var log))
             {
-                try
-                {
-                    _webSocket.Send(data);
-                    if (verboseLogging)
-                        Debug.Log($"[ReachyDaemonTargetWebSocketClient] Sent: {data}");
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning($"[ReachyDaemonTargetWebSocketClient] Send error: {ex.Message}");
-                    break;
-                }
+                if (log.isWarning)
+                    Debug.LogWarning(log.message);
+                else
+                    Debug.Log(log.message);
+            }
 
-                sent++;
+            while (_connectionStateQueue.TryDequeue(out bool isConnectedOrConnecting))
+            {
+                ConnectionStateChanged?.Invoke(isConnectedOrConnecting);
             }
         }
 
@@ -93,6 +99,7 @@ namespace ReachyMiniTeleop.Transport
             }
 
             _outgoingQueue.Enqueue(data);
+            SignalWorkerForSend();
         }
 
         public bool TrySetEndpoint(string value, bool restartIfRunning)
@@ -138,41 +145,19 @@ namespace ReachyMiniTeleop.Transport
             }
 
             targetWebSocketUrl = normalizedTargetUrl;
+            _stopSignal.Reset();
+            _running = true;
             _isConnecting = true;
+            _isAlive = false;
+            int generation = Interlocked.Increment(ref _workerGeneration);
             ConnectionStateChanged?.Invoke(true);
 
-            _webSocket = new WebSocket(targetWebSocketUrl)
+            _workerThread = new Thread(() => WorkerLoop(targetWebSocketUrl, generation))
             {
-                EmitOnPing = true
+                IsBackground = true,
+                Name = "ReachyDaemonTargetWebSocketThread"
             };
-
-            _webSocket.OnOpen += (_, _) =>
-            {
-                _isConnecting = false;
-                if (verboseLogging)
-                    Debug.Log($"[ReachyDaemonTargetWebSocketClient] Connected to {targetWebSocketUrl}");
-            };
-            _webSocket.OnMessage += (_, args) =>
-            {
-                string data = args.Data;
-                if (!string.IsNullOrEmpty(data))
-                    _incomingQueue.Enqueue(data);
-            };
-            _webSocket.OnError += (_, args) =>
-            {
-                _isConnecting = false;
-                Debug.LogWarning($"[ReachyDaemonTargetWebSocketClient] WebSocket error: {args.Message}");
-                ConnectionStateChanged?.Invoke(false);
-            };
-            _webSocket.OnClose += (_, args) =>
-            {
-                _isConnecting = false;
-                if (verboseLogging)
-                    Debug.Log($"[ReachyDaemonTargetWebSocketClient] Closed: {args.Reason}");
-                ConnectionStateChanged?.Invoke(false);
-            };
-
-            _webSocket.ConnectAsync();
+            _workerThread.Start();
 
             if (autoWakeOnStart)
             {
@@ -190,22 +175,203 @@ namespace ReachyMiniTeleop.Transport
                 _wakeCoroutine = null;
             }
 
+            if (!_running && !_isConnecting && !_isAlive)
+                return;
+
+            _running = false;
             _isConnecting = false;
+            _isAlive = false;
+            Interlocked.Increment(ref _workerGeneration);
+            _stopSignal.Set();
+            _sendSignal.Set();
 
             try
             {
-                if (_webSocket != null && _webSocket.IsAlive)
-                    _webSocket.CloseAsync();
+                if (_workerThread != null && _workerThread.IsAlive && _workerThread != Thread.CurrentThread)
+                    _workerThread.Join(2000);
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[ReachyDaemonTargetWebSocketClient] Close error: {ex.Message}");
+                Debug.LogWarning($"[ReachyDaemonTargetWebSocketClient] Worker stop error: {ex.Message}");
             }
             finally
             {
-                _webSocket = null;
+                if (_workerThread != null && !_workerThread.IsAlive)
+                    _workerThread = null;
                 ConnectionStateChanged?.Invoke(false);
             }
+        }
+
+        private void WorkerLoop(string url, int generation)
+        {
+#if UNITY_EDITOR
+            if (workerLoopOverride != null)
+            {
+                try
+                {
+                    workerLoopOverride(url, generation);
+                }
+                catch (Exception ex)
+                {
+                    if (IsCurrentWorker(generation))
+                        EnqueueMainThreadLog($"[ReachyDaemonTargetWebSocketClient] Worker error: {ex.Message}", true);
+                }
+                finally
+                {
+                    FinishWorker(generation);
+                }
+
+                return;
+            }
+#endif
+
+            WebSocket webSocket = null;
+
+            try
+            {
+                webSocket = CreateWebSocket(url, generation);
+                webSocket.Connect();
+
+                while (_running && !_stopSignal.IsSet && webSocket.IsAlive)
+                {
+                    WaitHandle.WaitAny(new[] { _stopSignal.WaitHandle, _sendSignal }, 50);
+
+                    if (!_running || _stopSignal.IsSet || !webSocket.IsAlive)
+                        break;
+
+                    if (!TryDequeueLatestOutgoing(out string data))
+                        continue;
+
+                    try
+                    {
+                        webSocket.Send(data);
+
+                        if (verboseLogging)
+                            EnqueueMainThreadLog($"[ReachyDaemonTargetWebSocketClient] Sent: {data}", false);
+                    }
+                    catch (Exception ex)
+                    {
+                        EnqueueMainThreadLog($"[ReachyDaemonTargetWebSocketClient] Send error: {ex.Message}", true);
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (IsCurrentWorker(generation) && _running)
+                    EnqueueMainThreadLog($"[ReachyDaemonTargetWebSocketClient] Connection exception: {ex.Message}", true);
+            }
+            finally
+            {
+                try
+                {
+                    if (webSocket != null && webSocket.IsAlive)
+                        webSocket.Close();
+                }
+                catch (Exception ex)
+                {
+                    if (IsCurrentWorker(generation))
+                        EnqueueMainThreadLog($"[ReachyDaemonTargetWebSocketClient] Close error: {ex.Message}", true);
+                }
+
+                FinishWorker(generation);
+            }
+        }
+
+        private WebSocket CreateWebSocket(string url, int generation)
+        {
+            var webSocket = new WebSocket(url)
+            {
+                EmitOnPing = true,
+                WaitTime = TimeSpan.FromSeconds(Math.Max(1, requestTimeoutSeconds))
+            };
+
+            webSocket.OnOpen += (_, _) =>
+            {
+                if (!IsCurrentWorker(generation))
+                    return;
+
+                _isConnecting = false;
+                _isAlive = true;
+
+                if (verboseLogging)
+                    EnqueueMainThreadLog($"[ReachyDaemonTargetWebSocketClient] Connected to {url}", false);
+            };
+            webSocket.OnMessage += (_, args) =>
+            {
+                string data = args.Data;
+                if (!string.IsNullOrEmpty(data))
+                    _incomingQueue.Enqueue(data);
+            };
+            webSocket.OnError += (_, args) =>
+            {
+                if (!IsCurrentWorker(generation))
+                    return;
+
+                _isConnecting = false;
+                _isAlive = false;
+                EnqueueMainThreadLog($"[ReachyDaemonTargetWebSocketClient] WebSocket error: {args.Message}", true);
+                EnqueueConnectionState(false);
+            };
+            webSocket.OnClose += (_, args) =>
+            {
+                if (!IsCurrentWorker(generation))
+                    return;
+
+                _isConnecting = false;
+                _isAlive = false;
+
+                if (verboseLogging)
+                    EnqueueMainThreadLog($"[ReachyDaemonTargetWebSocketClient] Closed: {args.Reason}", false);
+
+                EnqueueConnectionState(false);
+            };
+
+            return webSocket;
+        }
+
+        private bool TryDequeueLatestOutgoing(out string latest)
+        {
+            latest = null;
+
+            while (_outgoingQueue.TryDequeue(out var data))
+                latest = data;
+
+            return latest != null;
+        }
+
+        private void FinishWorker(int generation)
+        {
+            if (!IsCurrentWorker(generation))
+                return;
+
+            _running = false;
+            _isConnecting = false;
+            _isAlive = false;
+            EnqueueConnectionState(false);
+        }
+
+        private bool IsCurrentWorker(int generation)
+        {
+            return generation == Volatile.Read(ref _workerGeneration);
+        }
+
+        private void SignalWorkerForSend()
+        {
+#if UNITY_EDITOR
+            Interlocked.Increment(ref sendSignalSetCountForTests);
+#endif
+            _sendSignal.Set();
+        }
+
+        private void EnqueueConnectionState(bool isConnectedOrConnecting)
+        {
+            _connectionStateQueue.Enqueue(isConnectedOrConnecting);
+        }
+
+        private void EnqueueMainThreadLog(string message, bool isWarning)
+        {
+            _mainThreadLogs.Enqueue(new MainThreadLog(message, isWarning));
         }
 
         public static bool IsValidTargetWebSocketUrl(string url, out string normalizedUrl)
@@ -297,6 +463,18 @@ namespace ReachyMiniTeleop.Transport
 
                 if (request.result != UnityWebRequest.Result.Success && verboseLogging)
                     Debug.LogWarning($"[ReachyDaemonTargetWebSocketClient] POST {url} failed: {request.error}");
+            }
+        }
+
+        private readonly struct MainThreadLog
+        {
+            public readonly string message;
+            public readonly bool isWarning;
+
+            public MainThreadLog(string message, bool isWarning)
+            {
+                this.message = message;
+                this.isWarning = isWarning;
             }
         }
     }
