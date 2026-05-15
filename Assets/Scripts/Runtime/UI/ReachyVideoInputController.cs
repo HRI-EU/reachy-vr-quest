@@ -6,7 +6,7 @@ namespace ReachyMiniTeleop.UI
 {
     public sealed class ReachyVideoInputController : MonoBehaviour
     {
-        public const int DefaultSignalingPort = 8766;
+        public const int DefaultSignalingPort = 8443;
 
         [Header("References")]
         public Toggle connectVideoToggle;
@@ -80,8 +80,12 @@ namespace ReachyMiniTeleop.UI
         {
             signalingUrl = null;
 
-            if (!ReachyEndpointInputController.TryBuildTcpEndpointFromHost(hostInput, port, out _, out string host))
+            if (!ReachyEndpointInputController.TryNormalizeHostInput(hostInput, out string host) ||
+                port <= 0 ||
+                port > 65535)
+            {
                 return false;
+            }
 
             string candidate = $"ws://{host}:{port}";
             return WebRTCClient.IsValidSignalingUrl(candidate, out signalingUrl);

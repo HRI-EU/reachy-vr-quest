@@ -9,6 +9,8 @@ namespace ReachyMiniTeleop.Reachy
     {
         [Header("References")]
         public MonoBehaviour skeletonProviderBehaviour;
+        public MonoBehaviour messageSenderBehaviour;
+        [System.Obsolete("Use messageSenderBehaviour. Kept for existing scenes that still reference the ZMQ client.")]
         public ReachyZmqDealerClient zmqDealerClient;
         public ReachyTeleopConfig config;
 
@@ -24,6 +26,7 @@ namespace ReachyMiniTeleop.Reachy
         public event System.Action<string> OnPayloadJsonBuilt;
 
         private IReachySkeletonProvider SkeletonProvider => skeletonProviderBehaviour as IReachySkeletonProvider;
+        private IReachyMessageSender MessageSender => messageSenderBehaviour as IReachyMessageSender ?? zmqDealerClient;
         private ReachyTeleopConfig Config => _runtimeConfig != null ? _runtimeConfig : config;
 
         private void Awake()
@@ -33,7 +36,10 @@ namespace ReachyMiniTeleop.Reachy
                 _runtimeConfig = ScriptableObject.CreateInstance<ReachyTeleopConfig>();
             }
 
-            if (zmqDealerClient == null)
+            if (messageSenderBehaviour == null)
+                messageSenderBehaviour = FindFirstObjectByType<ReachyDaemonTargetWebSocketClient>();
+
+            if (messageSenderBehaviour == null && zmqDealerClient == null)
                 zmqDealerClient = FindFirstObjectByType<ReachyZmqDealerClient>();
 
             if (!IsUsableSkeletonProvider(skeletonProviderBehaviour))
@@ -108,7 +114,10 @@ namespace ReachyMiniTeleop.Reachy
             if (!TryBuildPayload(out var payload, out var antennaDebugInfo))
                 return false;
 
-            string json = JsonConvert.SerializeObject(payload);
+            var sender = MessageSender;
+            string json = sender is ReachyDaemonTargetWebSocketClient
+                ? ReachyDaemonTargetAdapter.ToJson(payload)
+                : JsonConvert.SerializeObject(payload);
             OnPayloadJsonBuilt?.Invoke(json);
 
             if (verbose)
@@ -120,7 +129,7 @@ namespace ReachyMiniTeleop.Reachy
                     $"payload={json}");
             }
 
-            zmqDealerClient?.SendMessageToServer(json);
+            sender?.SendMessageToServer(json);
             return true;
         }
 

@@ -129,6 +129,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1001}
   - component: {fileID: 1002}
+  - component: {fileID: 1005}
   - component: {fileID: 1003}
   - component: {fileID: 1004}
   m_Layer: 0
@@ -160,7 +161,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1000}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: aaaaaaaa000000000000000000000002, type: 3}
   m_Name: 
@@ -186,6 +187,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   skeletonProviderBehaviour: {fileID: 3003}
+  messageSenderBehaviour: {fileID: 1005}
   zmqDealerClient: {fileID: 1002}
   config: {fileID: 11400000, guid: bbbbbbbb000000000000000000000001, type: 2}
   publishOnEnable: 0
@@ -204,6 +206,26 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   publisher: {fileID: 1003}
   logPayloads: 1
+--- !u!114 &1005
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5b890f6f7c70c5b44a375e8007031d04, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  targetWebSocketUrl: ws://localhost:8000/api/move/ws/set_target
+  apiBaseUrl: http://localhost:8000/api
+  autoStart: 0
+  autoWakeOnStart: 1
+  verboseLogging: 1
+  maxQueuedMessages: 5
+  maxSendsPerFrame: 4
+  requestTimeoutSeconds: 3
 --- !u!1 &2000
 GameObject:
   m_ObjectHideFlags: 0
@@ -1160,7 +1182,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::WebRTCClient
   receiveRawImage: {fileID: 199260755}
   holoOverlay: {fileID: 0}
-  signalingUrl: ws://127.0.0.1:8766
+  signalingUrl: ws://127.0.0.1:8443
+  listenerName: unity-teleop
+  preferredProducerName: reachymini
   userInputAddress: {fileID: 0}
 --- !u!4 &398832651
 Transform:
@@ -1192,7 +1216,7 @@ MonoBehaviour:
   connectVideoToggle: {fileID: 1266015580}
   robotIpInput: {fileID: 1173676043}
   webRtcClient: {fileID: 398832650}
-  signalingPort: 8766
+  signalingPort: 8443
 --- !u!1 &438944559
 GameObject:
   m_ObjectHideFlags: 0
@@ -2201,10 +2225,11 @@ MonoBehaviour:
   robotIpInput: {fileID: 1173676043}
   statusLabel: {fileID: 1159209323}
   connectPoseToggle: {fileID: 2062269966}
+  daemonClient: {fileID: 1005}
   zmqDealerClient: {fileID: 1002}
   publisher: {fileID: 1003}
   config: {fileID: 11400000, guid: bbbbbbbb000000000000000000000001, type: 2}
-  port: 40000
+  apiPort: 8000
   fallbackHost: localhost
   placeholderHost: 192.168.1.20
   saveSuccessfulHost: 1

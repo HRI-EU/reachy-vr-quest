@@ -10,19 +10,22 @@ namespace ReachyMiniTeleop.UI
 {
     public sealed class ReachyEndpointInputController : MonoBehaviour
     {
-        public const int DefaultPort = 40000;
+        public const int DefaultApiPort = 8000;
+        public const string DefaultTargetPath = ReachyDaemonTargetWebSocketClient.DefaultTargetPath;
         public const string PlayerPrefsKey = "ReachyMiniTeleop.LastRobotIp";
 
         [Header("References")]
         public TMP_InputField robotIpInput;
         public TextMeshProUGUI statusLabel;
         public Toggle connectPoseToggle;
+        public ReachyDaemonTargetWebSocketClient daemonClient;
+        [System.Obsolete("Use daemonClient. Kept for older scenes that still serialize the ZMQ field.")]
         public ReachyZmqDealerClient zmqDealerClient;
         public ReachyHeadCommandPublisher publisher;
         public ReachyTeleopConfig config;
 
-        [Header("Endpoint")]
-        public int port = DefaultPort;
+        [Header("Daemon Endpoint")]
+        public int apiPort = DefaultApiPort;
         public string fallbackHost = "localhost";
         public string placeholderHost = "192.168.1.20";
         public bool saveSuccessfulHost = true;
@@ -40,8 +43,8 @@ namespace ReachyMiniTeleop.UI
 
         private void Awake()
         {
-            if (zmqDealerClient == null)
-                zmqDealerClient = FindFirstObjectByType<ReachyZmqDealerClient>();
+            if (daemonClient == null)
+                daemonClient = FindFirstObjectByType<ReachyDaemonTargetWebSocketClient>();
 
             if (publisher == null)
                 publisher = FindFirstObjectByType<ReachyHeadCommandPublisher>();
@@ -93,30 +96,32 @@ namespace ReachyMiniTeleop.UI
         public bool TryConnectFromCurrentInput()
         {
             string rawHost = robotIpInput != null ? robotIpInput.text : string.Empty;
-            if (!TryBuildTcpEndpointFromHost(rawHost, port, out string endpoint, out string host))
+            if (!TryBuildDaemonTargetWebSocketUrlFromHost(rawHost, apiPort, out string endpoint, out string host) ||
+                !TryBuildDaemonApiBaseUrlFromHost(host, apiPort, out string apiBaseUrl))
             {
                 SetStatus("Enter a valid robot IP");
                 SetConnectToggleWithoutNotify(false);
                 return false;
             }
 
-            if (zmqDealerClient == null)
+            if (daemonClient == null)
             {
-                SetStatus("ZMQ client missing");
+                SetStatus("Daemon WS client missing");
                 SetConnectToggleWithoutNotify(false);
                 return false;
             }
 
             publisher?.StopPublishing();
 
-            if (!zmqDealerClient.TrySetEndpoint(endpoint, true))
+            if (!daemonClient.TrySetEndpoint(endpoint, true) ||
+                !daemonClient.TrySetApiBaseUrl(apiBaseUrl))
             {
                 SetStatus("Invalid endpoint");
                 SetConnectToggleWithoutNotify(false);
                 return false;
             }
 
-            zmqDealerClient.StartClient();
+            daemonClient.StartClient();
             publisher?.StartPublishing();
 
             if (saveSuccessfulHost)
@@ -129,15 +134,43 @@ namespace ReachyMiniTeleop.UI
                 robotIpInput.SetTextWithoutNotify(host);
 
             HideSceneKeypad();
-            SetStatus($"Connecting to {host}:{port}");
+            SetStatus($"Connecting to {host}:{apiPort}");
             return true;
         }
 
         public void Disconnect()
         {
             publisher?.StopPublishing();
-            zmqDealerClient?.StopClient();
+            daemonClient?.StopClient();
             SetStatus("Disconnected");
+        }
+
+        public static bool TryBuildDaemonTargetWebSocketUrlFromHost(string hostInput, int port, out string targetUrl)
+        {
+            return TryBuildDaemonTargetWebSocketUrlFromHost(hostInput, port, out targetUrl, out _);
+        }
+
+        public static bool TryBuildDaemonTargetWebSocketUrlFromHost(string hostInput, int port, out string targetUrl, out string host)
+        {
+            targetUrl = null;
+            host = null;
+
+            if (!TryNormalizeHostInput(hostInput, out host) || port <= 0 || port > 65535)
+                return false;
+
+            string candidate = $"ws://{host}:{port}{DefaultTargetPath}";
+            return ReachyDaemonTargetWebSocketClient.IsValidTargetWebSocketUrl(candidate, out targetUrl);
+        }
+
+        public static bool TryBuildDaemonApiBaseUrlFromHost(string hostInput, int port, out string apiBaseUrl)
+        {
+            apiBaseUrl = null;
+
+            if (!TryNormalizeHostInput(hostInput, out string host) || port <= 0 || port > 65535)
+                return false;
+
+            string candidate = $"http://{host}:{port}{ReachyDaemonTargetWebSocketClient.DefaultApiPath}";
+            return ReachyDaemonTargetWebSocketClient.IsValidApiBaseUrl(candidate, out apiBaseUrl);
         }
 
         public static bool TryBuildTcpEndpointFromHost(string hostInput, int port, out string endpoint)
@@ -150,25 +183,14 @@ namespace ReachyMiniTeleop.UI
             endpoint = null;
             host = null;
 
-            if (port <= 0 || port > 65535 || string.IsNullOrWhiteSpace(hostInput))
+            if (port <= 0 || port > 65535 || !TryNormalizeHostInput(hostInput, out host))
                 return false;
 
-            string trimmedHost = hostInput.Trim();
-            if (trimmedHost.Contains("://") ||
-                trimmedHost.Contains(":") ||
-                trimmedHost.Contains("/") ||
-                trimmedHost.Contains("\\") ||
-                Uri.CheckHostName(trimmedHost) == UriHostNameType.Unknown)
-            {
-                return false;
-            }
-
-            string candidate = $"tcp://{trimmedHost}:{port}";
+            string candidate = $"tcp://{host}:{port}";
             if (!ReachyZmqDealerClient.IsValidTcpEndpoint(candidate))
                 return false;
 
             endpoint = candidate;
-            host = trimmedHost;
             return true;
         }
 
@@ -176,7 +198,7 @@ namespace ReachyMiniTeleop.UI
         {
             host = null;
 
-            if (!ReachyZmqDealerClient.IsValidTcpEndpoint(endpoint))
+            if (string.IsNullOrWhiteSpace(endpoint))
                 return false;
 
             if (!Uri.TryCreate(endpoint.Trim(), UriKind.Absolute, out var uri))
@@ -221,10 +243,10 @@ namespace ReachyMiniTeleop.UI
                 host = PlayerPrefs.GetString(PlayerPrefsKey);
 
             if (string.IsNullOrWhiteSpace(host))
-                TryExtractHost(config != null ? config.endpoint : null, out host);
+                TryExtractHost(daemonClient != null ? daemonClient.targetWebSocketUrl : null, out host);
 
             if (string.IsNullOrWhiteSpace(host))
-                TryExtractHost(zmqDealerClient != null ? zmqDealerClient.endpoint : null, out host);
+                TryExtractHost(config != null ? config.endpoint : null, out host);
 
             if (string.IsNullOrWhiteSpace(host))
                 host = fallbackHost;
@@ -368,6 +390,27 @@ namespace ReachyMiniTeleop.UI
         {
             if (statusLabel != null)
                 statusLabel.text = message;
+        }
+
+        public static bool TryNormalizeHostInput(string hostInput, out string host)
+        {
+            host = null;
+
+            if (string.IsNullOrWhiteSpace(hostInput))
+                return false;
+
+            string trimmedHost = hostInput.Trim();
+            if (trimmedHost.Contains("://") ||
+                trimmedHost.Contains(":") ||
+                trimmedHost.Contains("/") ||
+                trimmedHost.Contains("\\") ||
+                Uri.CheckHostName(trimmedHost) == UriHostNameType.Unknown)
+            {
+                return false;
+            }
+
+            host = trimmedHost;
+            return true;
         }
 
         private void EnsureSceneKeypad()

@@ -5,8 +5,8 @@ Minimal Unity project for sending Meta Quest head, body yaw, hand-derived antenn
 The project is intentionally small. It is split out from the broader MirrorSkinVR workspace and keeps the Reachy Mini path:
 
 ```text
-Quest body/head/hand tracking -> Reachy payload builder -> ZMQ DEALER -> Reachy Mini ROUTER bridge
-Reachy camera bridge -> WebRTC signaling -> Unity video surface
+Quest body/head/hand tracking -> Reachy payload builder -> daemon FullBodyTarget -> Reachy daemon WebSocket
+Reachy daemon GStreamer WebRTC signaling -> Unity video surface
 ```
 
 ## Unity Version
@@ -54,16 +54,15 @@ The runtime stack uses:
 
 - `ReachyTeleopConfig`
 - `ReachyHeadCommandPublisher`
-- `ReachyZmqDealerClient`
+- `ReachyDaemonTargetWebSocketClient`
 - `DebugReachyPayloadLogger`
 - `WebRTCClient`
 - World-space `MainMenu` controllers for robot IP, pose connection, video connection, and head-follow menu placement
 
 Default teleop config:
 
-- Endpoint: `tcp://localhost:40000`
-- DEALER identity: `body`
-- Heartbeat interval: `2 seconds`
+- Pose target WebSocket: `ws://localhost:8000/api/move/ws/set_target`
+- Daemon API base: `http://localhost:8000/api`
 - Send rate: `30 Hz`
 - Body yaw limit: `45 degrees`
 - Finger plane range: `90 degrees`
@@ -80,10 +79,11 @@ The scene menu has one `Robot IP` input. Enter only the host, for example:
 
 Do not enter `tcp://`, `ws://`, a port, or a path. The app builds the runtime endpoints:
 
-- Pose data: `tcp://<host>:40000`
-- Video signaling: `ws://<host>:8766`
+- Pose data: `ws://<host>:8000/api/move/ws/set_target`
+- Daemon API: `http://<host>:8000/api`
+- Video signaling: `ws://<host>:8443`
 
-`Connect With Pose Data` starts/stops ZMQ pose publishing. The last successfully used host is saved with `PlayerPrefs` and restored on the next launch.
+`Connect With Pose Data` starts/stops daemon WebSocket pose publishing. The last successfully used host is saved with `PlayerPrefs` and restored on the next launch.
 
 The Quest/XR Simulation input path uses an in-scene numeric keypad. The Android system keyboard is not the primary path because it is unreliable for this world-space UI.
 
@@ -93,39 +93,33 @@ The `MainMenu` uses `HeadFollowMenu` so it floats below the view and follows hea
 
 Unity receives Reachy camera video through a receive-only WebRTC client:
 
-- `WebRTCClient` creates the offer and receives the first remote `VideoStreamTrack`.
-- WebSocketSharp handles signaling.
-- `ReachyVideoInputController` reuses the `Robot IP` host and builds `ws://<host>:8766`.
+- `WebRTCClient` connects to the daemon GStreamer signaling server, registers as a listener, selects the `reachymini` producer, answers the robot offer, and receives the first remote `VideoStreamTrack`.
+- WebSocketSharp handles GStreamer signaling.
+- `ReachyVideoInputController` reuses the `Robot IP` host and builds `ws://<host>:8443`.
 - `ConnectVideo` is a Toggle. Turning it on connects video; turning it off disconnects.
 - The video surface becomes visible while connecting/connected and clears/hides on signaling close, error, or manual disconnect.
 
-The Python video bridge default signaling port is `8766`. Keep Unity's `ReachyVideoInputController.DefaultSignalingPort` aligned with that backend default.
+The Reachy daemon GStreamer signaling port is `8443`. Keep Unity's `ReachyVideoInputController.DefaultSignalingPort` aligned with that backend default.
 
 In Quest builds, `localhost` means the headset, not the PC. Use the PC or robot LAN IP when the bridge runs outside the headset.
 
-## ZMQ Wire Format
+## Daemon Pose Wire Format
 
-Unity uses a DEALER socket and sends multipart messages compatible with the Python ROUTER bridge:
-
-```text
-[empty frame, JSON payload]
-```
-
-A ROUTER peer receives:
-
-```text
-[dealer identity, empty frame, JSON payload]
-```
-
-Heartbeat payload:
+Unity sends daemon `FullBodyTarget` JSON messages to `ws://<host>:8000/api/move/ws/set_target`:
 
 ```json
-{"type":"heartbeat"}
+{
+  "target_head_pose": { "m": [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0] },
+  "target_antennas": [0.12, -0.08],
+  "target_body_yaw": -0.21816616
+}
 ```
 
-## Reachy Payload
+The legacy ZMQ client and mock receiver remain in the project for fallback diagnostics, but the main scene uses the daemon WebSocket path.
 
-Main command payload:
+## Reachy Payload Math
+
+`ReachyHeadCommandBuilder` still builds the intermediate head/body payload:
 
 ```json
 {
@@ -142,6 +136,8 @@ Coordinate convention:
 - Robot output is FLU: x forward, y left, z up.
 - Position conversion is `(x, y, z) -> (z, -x, y)`.
 - `head_rotation` is the Quest head rotation relative to the shoulder frame, converted to FLU.
+- Reachy daemon `target_head_pose` is not head-relative. Before sending to the daemon, Unity composes `worldHeadPose = bodyYawPose * localHeadPose` and flattens the 4x4 matrix row-major.
+- `target_body_yaw` is sent in radians.
 
 ## Mock Receiver
 
@@ -157,7 +153,7 @@ Run:
 python Tools/mock_reachy_router.py --bind tcp://*:40000
 ```
 
-Then enter Play Mode in Unity, enter the host in the scene menu, and enable `Connect With Pose Data`. You should see heartbeat and Reachy JSON payloads printed by the mock receiver.
+Then temporarily wire `ReachyHeadCommandPublisher.messageSenderBehaviour` back to `ReachyZmqDealerClient`, enter Play Mode, enter the host in the scene menu, and enable `Connect With Pose Data`. You should see heartbeat and legacy Reachy JSON payloads printed by the mock receiver.
 
 If Unity cannot compile NetMQ references, restore NuGet packages from `Assets/packages.config` with NuGetForUnity before entering Play Mode.
 
@@ -172,9 +168,10 @@ For a real Quest build:
 5. Assign `CenterCamAnchor`, `CenterEyeFront`, `CenterEyeUp`, and optional hand skeleton references on `MetaBodySkeletonProvider`.
 6. Set `ReachyHeadCommandPublisher.skeletonProviderBehaviour` to `MetaBodySkeletonProvider`.
 7. Enter the PC/robot LAN IP in the scene menu.
-8. Enable `Connect With Pose Data` for pose control and `ConnectVideo` for camera video.
+8. Make sure `reachy-mini-daemon` is running and reachable on ports `8000` and `8443`.
+9. Enable `Connect With Pose Data` for pose control and `ConnectVideo` for camera video.
 
-Port `40000` is fixed in the UI for pose data. Port `8766` is fixed in the video UI for signaling. Changing the UI host does not change the Reachy payload JSON, coordinate conversion, or ZMQ multipart framing.
+Port `8000` is fixed in the UI for pose/API access. Port `8443` is fixed in the video UI for signaling. Changing the UI host does not change the Reachy payload math or coordinate conversion.
 
 If `MetaSourceDataProvider` is missing after package restore, add it from the Meta XR Movement package to `QuestTrackingProvider_Template`.
 

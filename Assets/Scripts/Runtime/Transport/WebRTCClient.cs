@@ -1,7 +1,10 @@
-﻿using System;
+using System;
+using System.Collections;
 using System.Collections.Concurrent;
-using System.Net;
+using System.Collections.Generic;
 using System.Text;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using TMPro;
 using Unity.WebRTC;
 using UnityEngine;
@@ -10,39 +13,34 @@ using WebSocketSharp;
 
 [Serializable] public class SdpMsgUI { public string type; public string sdp; }
 [Serializable] public class IceMsgUI { public string type; public string candidate; public string sdpMid; public int sdpMLineIndex; }
-[Serializable] public class MsgBaseUI { public string type; }
 
 public class WebRTCClient : MonoBehaviour
 {
     [Header("UI")]
-    public RawImage receiveRawImage;     // RawImage on the Canvas, used to display remote video.
-    public GameObject holoOverlay;       // Optional existing overlay.
+    public RawImage receiveRawImage;
+    public GameObject holoOverlay;
 
-    [Header("Signaling (LAN)")]
-    public string signalingUrl = "ws://127.0.0.1:8766"; // Use the PC LAN IP on Quest.
+    [Header("GStreamer Signaling (LAN)")]
+    public string signalingUrl = "ws://127.0.0.1:8443";
+    public string listenerName = "unity-teleop";
+    public string preferredProducerName = "reachymini";
 
-    [Tooltip("Input field for user-provided address (e.g., 10.0.71.38:8766)")]
+    [Tooltip("Legacy input field. The in-scene Robot IP field is managed by ReachyVideoInputController.")]
     [SerializeField] private TMP_InputField userInputAddress;
 
     private RTCPeerConnection pc;
+    private RTCDataChannel dataChannel;
     private WebSocket ws;
     private readonly ConcurrentQueue<Action> mainThread = new ConcurrentQueue<Action>();
-    private string pendingOfferSdp;
-    private bool isConnecting;
-
-    // Keep WebRTC.Update() running.
+    private readonly List<IceMsgUI> pendingRemoteIce = new List<IceMsgUI>();
     private Coroutine webrtcUpdateCoroutine;
-    private Coroutine connectCoroutine;
-
-    // WebRTC 3.0: OnVideoReceived is usually only used for the initial binding.
-    private bool boundVideoTexture = false;
-
-    // Debug counters
-    private int onVideoReceivedCount = 0;
-    private float lastOnVideoLogTime = 0f;
-
-    // Instance key for PlayerPrefs
-    private string InstanceKey => $"WebRTCClient_{gameObject.name}";
+    private bool isConnecting;
+    private bool boundVideoTexture;
+    private bool remoteDescriptionSet;
+    private string sessionId;
+    private string selectedProducerId;
+    private int onVideoReceivedCount;
+    private float lastOnVideoLogTime;
 
     public bool IsConnectedOrConnecting => isConnecting || (ws != null && ws.IsAlive);
     public event Action<bool> ConnectionStateChanged;
@@ -55,118 +53,17 @@ public class WebRTCClient : MonoBehaviour
             receiveRawImage.texture = null;
             receiveRawImage.color = Color.white;
         }
-        if (holoOverlay != null) holoOverlay.SetActive(false);
+
+        if (holoOverlay != null)
+            holoOverlay.SetActive(false);
 
 #if !UNITY_EDITOR
-        // Load saved address if available
-        string urlKey = $"{InstanceKey}_SignalingUrl";
-        if (PlayerPrefs.HasKey(urlKey))
-            signalingUrl = PlayerPrefs.GetString(urlKey);
+        if (PlayerPrefs.HasKey($"{nameof(WebRTCClient)}_{gameObject.name}_SignalingUrl"))
+            signalingUrl = PlayerPrefs.GetString($"{nameof(WebRTCClient)}_{gameObject.name}_SignalingUrl");
 #endif
 
-        SetupPeerConnection();
-
-        // WebRTC.Update() should keep running in WebRTC 3.0.
         if (webrtcUpdateCoroutine == null)
             webrtcUpdateCoroutine = StartCoroutine(WebRTC.Update());
-    }
-
-    /// <summary>
-    /// Parses the user-provided address in IP:PORT format, for example 10.0.71.38:8766.
-    /// </summary>
-    private bool TryParseAddress(string input, out string ip, out int port)
-    {
-        ip = null;
-        port = 0;
-
-        if (string.IsNullOrWhiteSpace(input))
-            return false;
-
-        var parts = input.Trim().Split(':');
-        if (parts.Length != 2)
-            return false;
-
-        // Validate IP address
-        if (!IPAddress.TryParse(parts[0], out _))
-            return false;
-
-        // Validate port
-        if (!int.TryParse(parts[1], out port) || port < 1 || port > 65535)
-            return false;
-
-        ip = parts[0];
-        return true;
-    }
-
-    private void SetupPeerConnection()
-    {
-        var cfg = new RTCConfiguration { iceServers = Array.Empty<RTCIceServer>() };
-        pc = new RTCPeerConnection(ref cfg);
-
-        pc.OnConnectionStateChange = s => Debug.Log($"[RecvUI] ConnState: {s}");
-
-        pc.OnIceCandidate = cand =>
-        {
-            if (cand == null || ws == null || !ws.IsAlive) return;
-            var msg = new IceMsgUI
-            {
-                type = "ice",
-                candidate = cand.Candidate,
-                sdpMid = cand.SdpMid,
-                sdpMLineIndex = cand.SdpMLineIndex ?? 0
-            };
-            ws.Send(JsonUtility.ToJson(msg));
-        };
-
-        pc.OnTrack = e =>
-        {
-            Debug.Log($"[RecvUI] OnTrack kind={e.Track.Kind}");
-
-            if (e.Track is VideoStreamTrack v)
-            {
-                // WebRTC 3.0: this callback often fires only once, on the first frame.
-                v.OnVideoReceived += tex =>
-                {
-                    if (tex == null) return;
-
-                    // Count callback frequency to help determine whether it only fires once.
-                    onVideoReceivedCount++;
-                    if (Time.time - lastOnVideoLogTime > 1f)
-                    {
-                        Debug.Log($"[RecvUI] OnVideoReceived callback rate ~ {onVideoReceivedCount}/sec");
-                        onVideoReceivedCount = 0;
-                        lastOnVideoLogTime = Time.time;
-                    }
-
-                    mainThread.Enqueue(() =>
-                    {
-                        // Bind the texture only once, matching the common WebRTC 3.0 behavior.
-                        if (!boundVideoTexture)
-                        {
-                            boundVideoTexture = true;
-
-                            if (receiveRawImage != null)
-                            {
-                                receiveRawImage.texture = tex;
-                                receiveRawImage.enabled = true;
-
-                                // Optional: preserve the aspect ratio if the RawImage has an AspectRatioFitter component.
-                                // var fitter = receiveRawImage.GetComponent<AspectRatioFitter>();
-                                // if (fitter != null) fitter.aspectRatio = (float)tex.width / tex.height;
-
-                                Debug.Log($"[RecvUI] Bound texture once: {tex.width}x{tex.height} {tex.GetType()}");
-                            }
-
-                            if (holoOverlay != null) holoOverlay.SetActive(true);
-                        }
-                    });
-                };
-            }
-        };
-
-        // RecvOnly video transceiver
-        pc.AddTransceiver(TrackKind.Video,
-            new RTCRtpTransceiverInit { direction = RTCRtpTransceiverDirection.RecvOnly });
     }
 
     public bool Connect(string newSignalingUrl)
@@ -192,35 +89,60 @@ public class WebRTCClient : MonoBehaviour
             return;
         }
 
-        if (pc == null)
-            SetupPeerConnection();
+        if (!IsValidSignalingUrl(signalingUrl, out string normalizedUrl))
+        {
+            Debug.LogError($"[RecvUI] Invalid signaling URL: {signalingUrl}");
+            return;
+        }
 
-        // Allow the texture to be rebound once for each new connection.
-        boundVideoTexture = false;
-        ShowVideoSurface(true);
+        signalingUrl = normalizedUrl;
         isConnecting = true;
+        boundVideoTexture = false;
+        remoteDescriptionSet = false;
+        sessionId = null;
+        selectedProducerId = null;
+        pendingRemoteIce.Clear();
+        ShowVideoSurface(true);
         ConnectionStateChanged?.Invoke(true);
 
-        connectCoroutine = StartCoroutine(CreateOfferAndConnect());
+        ws = new WebSocket(signalingUrl)
+        {
+            EmitOnPing = true
+        };
+
+        ws.OnOpen += (_, _) => Debug.Log("[RecvUI][WS] Open");
+        ws.OnMessage += (_, e) =>
+        {
+            string json = e.Data ?? Encoding.UTF8.GetString(e.RawData);
+            mainThread.Enqueue(() => HandleSignalingMessage(json));
+        };
+        ws.OnError += (_, e) =>
+        {
+            Debug.LogError("[RecvUI][WS] Error: " + e.Message);
+            mainThread.Enqueue(HandleSignalingStopped);
+        };
+        ws.OnClose += (_, e) =>
+        {
+            Debug.Log("[RecvUI][WS] Closed: " + e.Reason);
+            mainThread.Enqueue(HandleSignalingStopped);
+        };
+
+        ws.ConnectAsync();
     }
 
     public void Disconnect()
     {
         Debug.Log("[RecvUI] Disconnect() requested");
 
-        if (connectCoroutine != null)
-        {
-            StopCoroutine(connectCoroutine);
-            connectCoroutine = null;
-        }
+        if (ws != null && ws.IsAlive && !string.IsNullOrEmpty(sessionId))
+            SendJson(new JObject { ["type"] = "endSession", ["sessionId"] = sessionId });
 
-        isConnecting = false;
-        ConnectionStateChanged?.Invoke(false);
+        ClosePeerConnection();
 
-        // Close signaling
         try
         {
-            if (ws != null && ws.IsAlive) ws.CloseAsync();
+            if (ws != null && ws.IsAlive)
+                ws.CloseAsync();
         }
         catch (Exception ex)
         {
@@ -231,38 +153,12 @@ public class WebRTCClient : MonoBehaviour
             ws = null;
         }
 
-        // Close WebRTC
-        try
-        {
-            if (pc != null)
-            {
-                pc.Close();
-                pc.Dispose();
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError("[RecvUI] PC dispose error: " + ex);
-        }
-        finally
-        {
-            pc = null;
-        }
-
-        pendingOfferSdp = null;
-
-        mainThread.Enqueue(() =>
-        {
-            boundVideoTexture = false;
-            if (receiveRawImage != null)
-            {
-                receiveRawImage.texture = null;
-                receiveRawImage.enabled = false;
-            }
-            if (holoOverlay != null) holoOverlay.SetActive(false);
-        });
-
-        Debug.Log($"[RecvUI] WS state: {(ws != null ? (ws.IsAlive ? "Alive" : "Dead") : "null")}");
+        isConnecting = false;
+        sessionId = null;
+        selectedProducerId = null;
+        pendingRemoteIce.Clear();
+        ClearVideoSurface();
+        ConnectionStateChanged?.Invoke(false);
     }
 
     public static bool IsValidSignalingUrl(string url, out string normalizedUrl)
@@ -272,8 +168,7 @@ public class WebRTCClient : MonoBehaviour
         if (string.IsNullOrWhiteSpace(url))
             return false;
 
-        string trimmed = url.Trim();
-        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri))
             return false;
 
         if (!string.Equals(uri.Scheme, "ws", StringComparison.OrdinalIgnoreCase) &&
@@ -289,144 +184,331 @@ public class WebRTCClient : MonoBehaviour
         return true;
     }
 
-    /// <summary>
-    /// Called when the user clicks the button to toggle connection or disconnection.
-    /// </summary>
     public void ToggleConnect()
     {
-        Debug.Log("[RecvUI] ToggleConnect() requested");
-
         if (ws != null && ws.IsAlive)
-        {
             Disconnect();
-        }
         else
-        {
             UserConnectWithAddress();
-        }
     }
 
-    /// <summary>
-    /// Parses the user-provided address and connects in IP:PORT format.
-    /// </summary>
     private void UserConnectWithAddress()
     {
 #if !UNITY_EDITOR
-        if (userInputAddress == null)
+        if (userInputAddress != null && !string.IsNullOrWhiteSpace(userInputAddress.text))
         {
-            Debug.LogError("[RecvUI] userInputAddress field is not assigned in Inspector.");
-            return;
+            string rawInput = userInputAddress.text.Trim();
+            if (!rawInput.Contains("://"))
+                rawInput = $"ws://{rawInput}";
+
+            if (!IsValidSignalingUrl(rawInput, out string normalizedUrl))
+            {
+                Debug.LogError("[RecvUI] Invalid signaling address.");
+                return;
+            }
+
+            signalingUrl = normalizedUrl;
+            PlayerPrefs.SetString($"{nameof(WebRTCClient)}_{gameObject.name}_SignalingUrl", signalingUrl);
+            PlayerPrefs.Save();
         }
-
-        var rawInput = userInputAddress.text.Trim();
-
-        // Parse and validate address
-        if (!TryParseAddress(rawInput, out var ip, out var port))
-        {
-            Debug.LogError("[RecvUI] Invalid address format. Use format like 10.0.71.38:8766");
-            return;
-        }
-
-        // Build signaling URL
-        signalingUrl = $"ws://{ip}:{port}";
-
-        // Save for persistence
-        PlayerPrefs.SetString($"{InstanceKey}_SignalingUrl", signalingUrl);
-        PlayerPrefs.Save();
-
-        Debug.Log($"[RecvUI] New signaling URL saved: {signalingUrl}");
 #endif
 
         Connect();
     }
 
-    private System.Collections.IEnumerator CreateOfferAndConnect()
+    private void HandleSignalingMessage(string json)
     {
-        Debug.Log("[RecvUI] CreateOffer...");
+        if (string.IsNullOrWhiteSpace(json))
+            return;
 
-        var offerOp = pc.CreateOffer();
-        yield return offerOp;
+        JObject message;
+        try
+        {
+            message = JObject.Parse(json);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[RecvUI][WS] Ignoring invalid JSON: {ex.Message}");
+            return;
+        }
 
-        var offer = offerOp.Desc;
-        var setLocalOp = pc.SetLocalDescription(ref offer);
-        yield return setLocalOp;
-
-        pendingOfferSdp = offer.sdp;
-        ConnectWS();
-        connectCoroutine = null;
+        string type = message.Value<string>("type");
+        switch (type)
+        {
+            case "welcome":
+                SendListenerStatus();
+                SendJson(new JObject { ["type"] = "list" });
+                break;
+            case "list":
+                StartFirstProducerSession(message);
+                break;
+            case "peerStatusChanged":
+                if (string.IsNullOrEmpty(selectedProducerId))
+                    SendJson(new JObject { ["type"] = "list" });
+                break;
+            case "sessionStarted":
+                sessionId = message.Value<string>("sessionId");
+                break;
+            case "peer":
+                HandlePeerMessage(message);
+                break;
+            case "endSession":
+                HandleSignalingStopped();
+                break;
+        }
     }
 
-    private void ConnectWS()
+    private void SendListenerStatus()
     {
-        Debug.Log($"[RecvUI][WS] Connecting to {signalingUrl}");
-        ws = new WebSocket(signalingUrl);
-        ws.EmitOnPing = true;
-
-        ws.OnOpen += (s, e) =>
+        var msg = new JObject
         {
-            Debug.Log("[RecvUI][WS] Open");
-            isConnecting = false;
-            ws.Send(JsonUtility.ToJson(new SdpMsgUI { type = "offer", sdp = pendingOfferSdp }));
+            ["type"] = "setPeerStatus",
+            ["roles"] = new JArray("listener"),
+            ["meta"] = new JObject
+            {
+                ["name"] = listenerName
+            }
+        };
+        SendJson(msg);
+    }
+
+    private void StartFirstProducerSession(JObject message)
+    {
+        if (!string.IsNullOrEmpty(selectedProducerId))
+            return;
+
+        JArray producers = message["producers"] as JArray;
+        if (producers == null || producers.Count == 0)
+        {
+            Debug.LogWarning("[RecvUI][WS] No GStreamer producers found.");
+            return;
+        }
+
+        JObject selected = null;
+        foreach (JObject producer in producers)
+        {
+            string producerName = producer["meta"]?.Value<string>("name");
+            if (string.Equals(producerName, preferredProducerName, StringComparison.OrdinalIgnoreCase))
+            {
+                selected = producer;
+                break;
+            }
+        }
+
+        if (selected == null)
+            selected = producers[0] as JObject;
+        selectedProducerId = selected?.Value<string>("id");
+        if (string.IsNullOrWhiteSpace(selectedProducerId))
+        {
+            Debug.LogWarning("[RecvUI][WS] Producer entry did not contain an id.");
+            return;
+        }
+
+        SendJson(new JObject
+        {
+            ["type"] = "startSession",
+            ["peerId"] = selectedProducerId
+        });
+    }
+
+    private void HandlePeerMessage(JObject message)
+    {
+        string incomingSessionId = message.Value<string>("sessionId");
+        if (!string.IsNullOrEmpty(incomingSessionId))
+            sessionId = incomingSessionId;
+
+        JObject sdp = message["sdp"] as JObject;
+        if (sdp != null)
+        {
+            string sdpType = sdp.Value<string>("type");
+            if (string.Equals(sdpType, "offer", StringComparison.OrdinalIgnoreCase))
+            {
+                string offerSdp = sdp.Value<string>("sdp");
+                if (!string.IsNullOrWhiteSpace(offerSdp))
+                    StartCoroutine(HandleOfferCoroutine(offerSdp));
+            }
+        }
+
+        JObject ice = message["ice"] as JObject;
+        if (ice != null)
+            AddRemoteIceOrQueue(ice.ToObject<IceMsgUI>());
+    }
+
+    private IEnumerator HandleOfferCoroutine(string offerSdp)
+    {
+        EnsurePeerConnection();
+
+        var offer = new RTCSessionDescription
+        {
+            type = RTCSdpType.Offer,
+            sdp = offerSdp
         };
 
-        ws.OnMessage += (s, e) =>
+        var setRemoteOp = pc.SetRemoteDescription(ref offer);
+        yield return setRemoteOp;
+        remoteDescriptionSet = true;
+
+        FlushPendingRemoteIce();
+
+        var answerOp = pc.CreateAnswer();
+        yield return answerOp;
+
+        var answer = answerOp.Desc;
+        var setLocalOp = pc.SetLocalDescription(ref answer);
+        yield return setLocalOp;
+
+        SendJson(new JObject
         {
-            var json = e.Data ?? Encoding.UTF8.GetString(e.RawData);
-            MsgBaseUI head = null;
-            try { head = JsonUtility.FromJson<MsgBaseUI>(json); } catch { }
-
-            if (head == null || string.IsNullOrEmpty(head.type)) return;
-
-            if (head.type == "answer")
+            ["type"] = "peer",
+            ["sessionId"] = sessionId,
+            ["sdp"] = new JObject
             {
-                var sdp = JsonUtility.FromJson<SdpMsgUI>(json);
-                mainThread.Enqueue(() =>
-                {
-                    var ans = new RTCSessionDescription { type = RTCSdpType.Answer, sdp = sdp.sdp };
-                    StartCoroutine(SetRemoteCoroutine(ans));
-                });
+                ["type"] = "answer",
+                ["sdp"] = answer.sdp
             }
-            else if (head.type == "ice")
+        });
+
+        isConnecting = false;
+        ConnectionStateChanged?.Invoke(true);
+    }
+
+    private void EnsurePeerConnection()
+    {
+        if (pc != null)
+            return;
+
+        var cfg = new RTCConfiguration
+        {
+            iceServers = new[] { new RTCIceServer { urls = new[] { "stun:stun.l.google.com:19302" } } }
+        };
+        pc = new RTCPeerConnection(ref cfg);
+
+        pc.OnConnectionStateChange = s => Debug.Log($"[RecvUI] ConnState: {s}");
+        pc.OnIceCandidate = candidate =>
+        {
+            if (candidate == null || string.IsNullOrEmpty(sessionId))
+                return;
+
+            SendJson(new JObject
             {
-                var ice = JsonUtility.FromJson<IceMsgUI>(json);
-                mainThread.Enqueue(() =>
+                ["type"] = "peer",
+                ["sessionId"] = sessionId,
+                ["ice"] = new JObject
                 {
-                    var c = new RTCIceCandidate(new RTCIceCandidateInit
+                    ["candidate"] = candidate.Candidate,
+                    ["sdpMid"] = candidate.SdpMid,
+                    ["sdpMLineIndex"] = candidate.SdpMLineIndex ?? 0
+                }
+            });
+        };
+        pc.OnDataChannel = channel =>
+        {
+            dataChannel = channel;
+            dataChannel.OnMessage = bytes =>
+            {
+                string message = Encoding.UTF8.GetString(bytes);
+                Debug.Log($"[RecvUI] DataChannel: {message}");
+            };
+        };
+        pc.OnTrack = e =>
+        {
+            Debug.Log($"[RecvUI] OnTrack kind={e.Track.Kind}");
+            if (e.Track is VideoStreamTrack videoTrack)
+            {
+                videoTrack.OnVideoReceived += texture =>
+                {
+                    if (texture == null)
+                        return;
+
+                    onVideoReceivedCount++;
+                    if (Time.time - lastOnVideoLogTime > 1f)
                     {
-                        candidate = ice.candidate,
-                        sdpMid = ice.sdpMid,
-                        sdpMLineIndex = ice.sdpMLineIndex
+                        Debug.Log($"[RecvUI] OnVideoReceived callback rate ~ {onVideoReceivedCount}/sec");
+                        onVideoReceivedCount = 0;
+                        lastOnVideoLogTime = Time.time;
+                    }
+
+                    mainThread.Enqueue(() =>
+                    {
+                        if (boundVideoTexture)
+                            return;
+
+                        boundVideoTexture = true;
+                        if (receiveRawImage != null)
+                        {
+                            receiveRawImage.texture = texture;
+                            receiveRawImage.enabled = true;
+                            Debug.Log($"[RecvUI] Bound texture once: {texture.width}x{texture.height} {texture.GetType()}");
+                        }
+
+                        if (holoOverlay != null)
+                            holoOverlay.SetActive(true);
                     });
-                    if (pc != null)
-                        pc.AddIceCandidate(c);
-                });
+                };
             }
         };
+    }
 
-        ws.OnError += (s, e) =>
-        {
-            isConnecting = false;
-            mainThread.Enqueue(HandleSignalingStopped);
-            Debug.LogError("[RecvUI][WS] Error: " + e.Message);
-        };
-        ws.OnClose += (s, e) =>
-        {
-            isConnecting = false;
-            mainThread.Enqueue(HandleSignalingStopped);
-            Debug.Log("[RecvUI][WS] Closed: " + e.Reason);
-        };
+    private void AddRemoteIceOrQueue(IceMsgUI ice)
+    {
+        if (ice == null || string.IsNullOrEmpty(ice.candidate))
+            return;
 
-        ws.ConnectAsync();
+        if (pc == null || !remoteDescriptionSet)
+        {
+            pendingRemoteIce.Add(ice);
+            return;
+        }
+
+        AddRemoteIce(ice);
+    }
+
+    private void FlushPendingRemoteIce()
+    {
+        foreach (var ice in pendingRemoteIce)
+            AddRemoteIce(ice);
+        pendingRemoteIce.Clear();
+    }
+
+    private void AddRemoteIce(IceMsgUI ice)
+    {
+        if (pc == null || ice == null)
+            return;
+
+        pc.AddIceCandidate(new RTCIceCandidate(new RTCIceCandidateInit
+        {
+            candidate = ice.candidate,
+            sdpMid = ice.sdpMid,
+            sdpMLineIndex = ice.sdpMLineIndex
+        }));
+    }
+
+    private void SendJson(JObject message)
+    {
+        if (ws == null || !ws.IsAlive || message == null)
+            return;
+
+        ws.Send(message.ToString(Formatting.None));
     }
 
     private void HandleSignalingStopped()
     {
         isConnecting = false;
-        pendingOfferSdp = null;
+        ClosePeerConnection();
         ws = null;
+        sessionId = null;
+        selectedProducerId = null;
+        pendingRemoteIce.Clear();
+        ClearVideoSurface();
+        ConnectionStateChanged?.Invoke(false);
+    }
 
+    private void ClosePeerConnection()
+    {
         try
         {
+            dataChannel?.Close();
+            dataChannel = null;
             if (pc != null)
             {
                 pc.Close();
@@ -435,24 +517,14 @@ public class WebRTCClient : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Debug.LogError("[RecvUI] PC cleanup after signaling stop failed: " + ex);
+            Debug.LogError("[RecvUI] PC cleanup failed: " + ex);
         }
         finally
         {
             pc = null;
+            boundVideoTexture = false;
+            remoteDescriptionSet = false;
         }
-
-        boundVideoTexture = false;
-        if (receiveRawImage != null)
-        {
-            receiveRawImage.texture = null;
-            ShowVideoSurface(false);
-        }
-
-        if (holoOverlay != null)
-            holoOverlay.SetActive(false);
-
-        ConnectionStateChanged?.Invoke(false);
     }
 
     private void ShowVideoSurface(bool visible)
@@ -464,36 +536,39 @@ public class WebRTCClient : MonoBehaviour
         receiveRawImage.color = Color.white;
     }
 
-    private System.Collections.IEnumerator SetRemoteCoroutine(RTCSessionDescription desc)
+    private void ClearVideoSurface()
     {
-        var d = desc;
-        var op = pc.SetRemoteDescription(ref d);
-        yield return op;
-        Debug.Log("[RecvUI] SetRemoteDescription done");
+        if (receiveRawImage != null)
+        {
+            receiveRawImage.texture = null;
+            receiveRawImage.enabled = false;
+        }
+
+        if (holoOverlay != null)
+            holoOverlay.SetActive(false);
     }
 
     private void Update()
     {
-        while (mainThread.TryDequeue(out var a))
+        while (mainThread.TryDequeue(out var action))
         {
-            try { a?.Invoke(); }
+            try { action?.Invoke(); }
             catch (Exception ex) { Debug.LogError(ex); }
         }
     }
 
     private void OnDestroy()
     {
-        if (connectCoroutine != null)
+        try
         {
-            StopCoroutine(connectCoroutine);
-            connectCoroutine = null;
+            if (ws != null && ws.IsAlive)
+                ws.CloseAsync();
+        }
+        catch
+        {
         }
 
-        try { if (ws != null && ws.IsAlive) ws.CloseAsync(); } catch { }
-
-        pc?.Close();
-        pc?.Dispose();
-        pc = null;
+        ClosePeerConnection();
         ws = null;
         isConnecting = false;
         ConnectionStateChanged?.Invoke(false);

@@ -10,6 +10,7 @@ namespace ReachyMiniTeleop.Tests.Editor
     {
         private GameObject _go;
         private ReachyZmqDealerClient _client;
+        private ReachyDaemonTargetWebSocketClient _daemonClient;
 
         [SetUp]
         public void SetUp()
@@ -17,6 +18,8 @@ namespace ReachyMiniTeleop.Tests.Editor
             _go = new GameObject("ReachyZmqDealerClientTests");
             _client = _go.AddComponent<ReachyZmqDealerClient>();
             _client.autoStart = false;
+            _daemonClient = _go.AddComponent<ReachyDaemonTargetWebSocketClient>();
+            _daemonClient.autoStart = false;
         }
 
         [TearDown]
@@ -60,45 +63,82 @@ namespace ReachyMiniTeleop.Tests.Editor
         }
 
         [Test]
-        public void TryBuildTcpEndpointFromHost_UsesFixedPort()
+        public void IsValidTargetWebSocketUrl_AcceptsDaemonSetTargetEndpoint()
         {
-            Assert.IsTrue(ReachyEndpointInputController.TryBuildTcpEndpointFromHost(
+            Assert.IsTrue(ReachyDaemonTargetWebSocketClient.IsValidTargetWebSocketUrl(
+                "ws://localhost:8000/api/move/ws/set_target",
+                out string url));
+
+            Assert.AreEqual("ws://localhost:8000/api/move/ws/set_target", url);
+        }
+
+        [Test]
+        public void IsValidTargetWebSocketUrl_RejectsWrongPath()
+        {
+            Assert.IsFalse(ReachyDaemonTargetWebSocketClient.IsValidTargetWebSocketUrl(
+                "ws://localhost:8000/api/state/ws/full",
+                out _));
+        }
+
+        [Test]
+        public void TrySetEndpoint_AcceptsDaemonTargetEndpoint()
+        {
+            Assert.IsTrue(_daemonClient.TrySetEndpoint("ws://192.168.1.20:8000/api/move/ws/set_target", false));
+
+            Assert.AreEqual("ws://192.168.1.20:8000/api/move/ws/set_target", _daemonClient.targetWebSocketUrl);
+        }
+
+        [Test]
+        public void TryBuildDaemonTargetWebSocketUrlFromHost_UsesDaemonApiPortAndPath()
+        {
+            Assert.IsTrue(ReachyEndpointInputController.TryBuildDaemonTargetWebSocketUrlFromHost(
                 "192.168.1.20",
-                ReachyEndpointInputController.DefaultPort,
+                ReachyEndpointInputController.DefaultApiPort,
                 out string endpoint));
 
-            Assert.AreEqual("tcp://192.168.1.20:40000", endpoint);
+            Assert.AreEqual("ws://192.168.1.20:8000/api/move/ws/set_target", endpoint);
         }
 
         [Test]
-        public void TryBuildTcpEndpointFromHost_TrimsInput()
+        public void TryBuildDaemonApiBaseUrlFromHost_UsesApiBasePath()
         {
-            Assert.IsTrue(ReachyEndpointInputController.TryBuildTcpEndpointFromHost(
+            Assert.IsTrue(ReachyEndpointInputController.TryBuildDaemonApiBaseUrlFromHost(
+                "192.168.1.20",
+                ReachyEndpointInputController.DefaultApiPort,
+                out string apiBaseUrl));
+
+            Assert.AreEqual("http://192.168.1.20:8000/api", apiBaseUrl);
+        }
+
+        [Test]
+        public void TryBuildDaemonTargetWebSocketUrlFromHost_TrimsInput()
+        {
+            Assert.IsTrue(ReachyEndpointInputController.TryBuildDaemonTargetWebSocketUrlFromHost(
                 "  192.168.1.20  ",
-                ReachyEndpointInputController.DefaultPort,
+                ReachyEndpointInputController.DefaultApiPort,
                 out string endpoint));
 
-            Assert.AreEqual("tcp://192.168.1.20:40000", endpoint);
+            Assert.AreEqual("ws://192.168.1.20:8000/api/move/ws/set_target", endpoint);
         }
 
         [Test]
-        public void TryBuildTcpEndpointFromHost_RejectsInvalidHostInput()
+        public void TryBuildDaemonTargetWebSocketUrlFromHost_RejectsInvalidHostInput()
         {
-            Assert.IsFalse(ReachyEndpointInputController.TryBuildTcpEndpointFromHost(
+            Assert.IsFalse(ReachyEndpointInputController.TryBuildDaemonTargetWebSocketUrlFromHost(
                 "",
-                ReachyEndpointInputController.DefaultPort,
+                ReachyEndpointInputController.DefaultApiPort,
                 out _));
-            Assert.IsFalse(ReachyEndpointInputController.TryBuildTcpEndpointFromHost(
+            Assert.IsFalse(ReachyEndpointInputController.TryBuildDaemonTargetWebSocketUrlFromHost(
                 "tcp://192.168.1.20",
-                ReachyEndpointInputController.DefaultPort,
+                ReachyEndpointInputController.DefaultApiPort,
                 out _));
-            Assert.IsFalse(ReachyEndpointInputController.TryBuildTcpEndpointFromHost(
-                "192.168.1.20:40000",
-                ReachyEndpointInputController.DefaultPort,
+            Assert.IsFalse(ReachyEndpointInputController.TryBuildDaemonTargetWebSocketUrlFromHost(
+                "192.168.1.20:8000",
+                ReachyEndpointInputController.DefaultApiPort,
                 out _));
-            Assert.IsFalse(ReachyEndpointInputController.TryBuildTcpEndpointFromHost(
+            Assert.IsFalse(ReachyEndpointInputController.TryBuildDaemonTargetWebSocketUrlFromHost(
                 "not a host?",
-                ReachyEndpointInputController.DefaultPort,
+                ReachyEndpointInputController.DefaultApiPort,
                 out _));
         }
 
@@ -110,7 +150,7 @@ namespace ReachyMiniTeleop.Tests.Editor
                 ReachyVideoInputController.DefaultSignalingPort,
                 out string signalingUrl));
 
-            Assert.AreEqual("ws://192.168.1.20:8766", signalingUrl);
+            Assert.AreEqual("ws://192.168.1.20:8443", signalingUrl);
         }
 
         [Test]
@@ -121,7 +161,7 @@ namespace ReachyMiniTeleop.Tests.Editor
                 ReachyVideoInputController.DefaultSignalingPort,
                 out string signalingUrl));
 
-            Assert.AreEqual("ws://localhost:8766", signalingUrl);
+            Assert.AreEqual("ws://localhost:8443", signalingUrl);
         }
 
         [Test]
@@ -136,7 +176,7 @@ namespace ReachyMiniTeleop.Tests.Editor
                 ReachyVideoInputController.DefaultSignalingPort,
                 out _));
             Assert.IsFalse(ReachyVideoInputController.TryBuildSignalingUrlFromHost(
-                "192.168.1.20:8766",
+                "192.168.1.20:8443",
                 ReachyVideoInputController.DefaultSignalingPort,
                 out _));
             Assert.IsFalse(ReachyVideoInputController.TryBuildSignalingUrlFromHost(
@@ -163,6 +203,25 @@ namespace ReachyMiniTeleop.Tests.Editor
             _client.SendMessageToServer("");
 
             Assert.AreEqual(0, _client.PendingSendCount);
+        }
+
+        [Test]
+        public void DaemonSendMessageToServer_QueuesNonEmptyPayload()
+        {
+            _daemonClient.SendMessageToServer("{\"ok\":true}");
+
+            Assert.AreEqual(1, _daemonClient.PendingSendCount);
+        }
+
+        [Test]
+        public void DaemonSendMessageToServer_DropsOldMessagesWhenQueueIsFull()
+        {
+            _daemonClient.maxQueuedMessages = 1;
+
+            _daemonClient.SendMessageToServer("{\"n\":1}");
+            _daemonClient.SendMessageToServer("{\"n\":2}");
+
+            Assert.AreEqual(1, _daemonClient.PendingSendCount);
         }
     }
 }
