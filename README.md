@@ -26,7 +26,6 @@ Unity packages include:
 - Newtonsoft JSON
 - NuGetForUnity
 - Unity UI, TextMeshPro, and Unity Test Framework
-- Unity MCP package for editor automation
 
 NuGet packages restored into `Assets/Packages/` include:
 
