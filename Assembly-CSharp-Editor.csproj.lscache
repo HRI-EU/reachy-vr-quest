@@ -351,7 +351,7 @@ Assets/Packages/
  WebSocketSharp-netstandard.1.0.1/lib/netstandard2.0/websocket-sharp.dll
 Library/PackageCache/
  com.github-glitchenzo.nugetforunity@5e9f9e02b402/Editor/PluginAPI/NuGetForUnity.PluginAPI.dll
- com.unity.ai.assistant@198d71476a35/Modules/Unity.AI.Toolkit.Sdk/Editor/AiEditorToolsSdk.dll
+ com.unity.ai.assistant@667f49aff9c0/Modules/Unity.AI.Toolkit.Sdk/Editor/AiEditorToolsSdk.dll
  com.unity.collections@aea9d3bd5e19/
   Unity.Collections.LowLevel.ILSupport/Unity.Collections.LowLevel.ILSupport.dll
   Unity.Collections.Tests/System.IO.Hashing/System.IO.Hashing.dll

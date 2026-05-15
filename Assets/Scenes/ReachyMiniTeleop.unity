@@ -128,7 +128,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1001}
-  - component: {fileID: 1002}
   - component: {fileID: 1005}
   - component: {fileID: 1003}
   - component: {fileID: 1004}
@@ -154,26 +153,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1002
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1000}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: aaaaaaaa000000000000000000000002, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  endpoint: tcp://localhost:40000
-  identity: body
-  recvHWM: 150
-  sendHWM: 10
-  autoStart: 0
-  verboseLogging: 1
-  config: {fileID: 11400000, guid: bbbbbbbb000000000000000000000001, type: 2}
-  heartbeatInterval: 2
 --- !u!114 &1003
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -188,7 +167,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   skeletonProviderBehaviour: {fileID: 3003}
   messageSenderBehaviour: {fileID: 1005}
-  zmqDealerClient: {fileID: 1002}
+  zmqDealerClient: {fileID: 0}
   config: {fileID: 11400000, guid: bbbbbbbb000000000000000000000001, type: 2}
   publishOnEnable: 0
   verbose: 1
@@ -2226,7 +2205,7 @@ MonoBehaviour:
   statusLabel: {fileID: 1159209323}
   connectPoseToggle: {fileID: 2062269966}
   daemonClient: {fileID: 1005}
-  zmqDealerClient: {fileID: 1002}
+  zmqDealerClient: {fileID: 0}
   publisher: {fileID: 1003}
   config: {fileID: 11400000, guid: bbbbbbbb000000000000000000000001, type: 2}
   apiPort: 8000
