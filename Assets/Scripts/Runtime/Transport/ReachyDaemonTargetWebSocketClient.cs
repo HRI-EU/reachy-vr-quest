@@ -23,7 +23,7 @@ namespace ReachyMiniTeleop.Transport
 
         [Header("Queue")]
         public int maxQueuedMessages = 5;
-        public int maxSendsPerFrame = 4;
+        public int maxSendsPerFrame = 1;
 
         [Header("HTTP")]
         public int requestTimeoutSeconds = 3;

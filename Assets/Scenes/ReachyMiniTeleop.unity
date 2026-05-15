@@ -223,8 +223,8 @@ MonoBehaviour:
   autoStart: 0
   autoWakeOnStart: 1
   verboseLogging: 1
-  maxQueuedMessages: 5
-  maxSendsPerFrame: 4
+  maxQueuedMessages: 3
+  maxSendsPerFrame: 1
   requestTimeoutSeconds: 3
 --- !u!1 &2000
 GameObject:
