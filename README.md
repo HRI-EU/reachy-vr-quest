@@ -2,12 +2,47 @@
 
 Minimal Unity project for sending Meta Quest head, body yaw, hand-derived antenna commands, and receive-only camera video for Reachy Mini teleoperation.
 
-The project is intentionally small. It is split out from the broader MirrorSkinVR workspace and keeps the Reachy Mini path:
+The communication structure is as follow graph:
 
 ```text
-Quest body/head/hand tracking -> Reachy payload builder -> daemon FullBodyTarget -> Reachy daemon WebSocket
-Reachy daemon GStreamer WebRTC signaling -> Unity video surface
+Quest body/head/hand tracking
+        │
+        └── pose samples ──> Reachy payload builder
+                                  │
+                                  └── FullBodyTarget JSON @ 30 Hz ──> Reachy daemon WebSocket
+                                                                            ws://<host>:8000/api/move/ws/set_target
+
+Reachy daemon camera stream
+        │
+        └── GStreamer WebRTC signaling ──> Unity video surface
+              ws://<host>:8443
 ```
+
+## Quick Start
+
+For quick run the teloperation with the robot:
+
+### Step 1: Install the Run Meta Quest app
+
+  Build from this Unity project, or directly download the **ReachyMiniTeleop-ws.apk** from this [google folder](https://drive.google.com/drive/folders/1pSU0CAmdK5ABUaZemj59tIp-4yxSqrfb?usp=sharing):  
+
+### Step 2: Ensure the Robot Server is running (Daemon)
+
+Please refer to the [reachy mini documentation](https://huggingface.co/docs/reachy_mini/SDK/quickstart). It will start:
+    - The server will post a websocket api for robot controlling on the port 8000
+    - And start the GStreamer WebRTC server.
+
+### Step 3: Run the application on the Quest. You will see the UI as following
+
+    - Put your reachy Server IP address, the quest app will connect to the server's 8000 port for head pose command, and WebRTC server's 8443 port for video streaming.
+    - Press the connect with HeadPose button to retarget robot move with your head and hands movement: 
+    - The your head and body orientation will map to the robot's head and body, and your hands orientation will map to the robot's antennas. 
+    - Press the video streaming button to toggle the camera view from the robot.
+
+For a complete tutorial, please follow the video instruction:
+
+[Watch the tutorial on YouTube](https://youtu.be/VtxTDMwYo5g?si=eDWmKZ1h7BVs7OJz)
+<iframe width="560" height="315" src="https://www.youtube.com/embed/VtxTDMwYo5g?si=k-Aki6ypeTzQbKqt" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 
 ## Unity Version
 
