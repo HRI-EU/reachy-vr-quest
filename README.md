@@ -1,8 +1,8 @@
 # Reachy Mini Quest Teleop
 
-Minimal Unity project for sending Meta Quest head, body yaw, hand-derived antenna commands, and receive-only camera video for Reachy Mini teleoperation.
+Minimal Unity project for Reachy Mini teleoperation from Meta Quest. It sends head pose, body yaw, and hand-derived antenna commands, and receives the robot camera stream as video.
 
-The communication structure is as follow graph:
+The communication flow is shown below:
 
 ```text
 Quest body/head/hand tracking
@@ -20,29 +20,42 @@ Reachy daemon camera stream
 
 ## Quick Start
 
-For quick run the teloperation with the robot:
+Use these steps to run teleoperation with a real Reachy Mini.
 
-### Step 1: Install the Run Meta Quest app
+### Step 1: Install the Meta Quest app
 
-  Build from this Unity project, or directly download the **ReachyMiniTeleop-ws.apk** from this [google folder](https://drive.google.com/drive/folders/1pSU0CAmdK5ABUaZemj59tIp-4yxSqrfb?usp=sharing):  
+Build the APK from this Unity project, or download the prebuilt **ReachyMiniTeleop-ws.apk** from this [Google Drive folder](https://drive.google.com/drive/folders/1pSU0CAmdK5ABUaZemj59tIp-4yxSqrfb?usp=sharing).
 
-### Step 2: Ensure the Robot Server is running (Daemon)
+### Step 2: Start the robot daemon
 
-Please refer to the [reachy mini documentation](https://huggingface.co/docs/reachy_mini/SDK/quickstart). It will start:
-    - The server will post a websocket api for robot controlling on the port 8000
-    - And start the GStreamer WebRTC server.
+Follow the [Reachy Mini quickstart documentation](https://huggingface.co/docs/reachy_mini/SDK/quickstart) to start the robot daemon. The daemon provides:
 
-### Step 3: Run the application on the Quest. You will see the UI as following
+- Pose control through the WebSocket API on port `8000`.
+- Camera video through the GStreamer WebRTC signaling server on port `8443`.
 
-    - Put your reachy Server IP address, the quest app will connect to the server's 8000 port for head pose command, and WebRTC server's 8443 port for video streaming.
-    - Press the connect with HeadPose button to retarget robot move with your head and hands movement: 
-    - The your head and body orientation will map to the robot's head and body, and your hands orientation will map to the robot's antennas. 
-    - Press the video streaming button to toggle the camera view from the robot.
+### Step 3: Run the app on Quest
 
-For a complete tutorial, please follow the video instruction:
+When the app opens, use the in-scene UI:
 
-[Watch the tutorial on YouTube](https://youtu.be/VtxTDMwYo5g?si=eDWmKZ1h7BVs7OJz)
-<iframe width="560" height="315" src="https://www.youtube.com/embed/VtxTDMwYo5g?si=k-Aki6ypeTzQbKqt" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+- Enter only the Reachy server host or IP address, for example `192.168.1.20`.
+- Enable `Connect With Pose Data` to send head, body, and antenna targets to the robot.
+- Your head and body orientation map to the robot's head and body yaw.
+- Your hand orientation maps to the robot's antennas.
+- Enable `ConnectVideo` to show or hide the robot camera stream.
+
+The Quest app builds the endpoints automatically:
+
+- Pose data: `ws://<host>:8000/api/move/ws/set_target`
+- Video signaling: `ws://<host>:8443`
+
+For a complete walkthrough, watch the tutorial:
+<div align="center">
+  <a href="https://youtu.be/VtxTDMwYo5g">
+    <img src="https://img.youtube.com/vi/VtxTDMwYo5g/maxresdefault.jpg" alt="Watch the Reachy Mini Quest Teleop tutorial on YouTube" width="720">
+  </a>
+  <br>
+  <a href="https://youtu.be/VtxTDMwYo5g">Watch the tutorial on YouTube</a>
+</div>
 
 ## Unity Version
 
