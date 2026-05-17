@@ -10,7 +10,7 @@ namespace ReachyMiniTeleop.UI
 {
     public sealed class ReachyEndpointInputController : MonoBehaviour
     {
-        public const int DefaultApiPort = 8000;
+        public const int DefaultApiPort = 9000;
         public const string DefaultTargetPath = ReachyDaemonTargetWebSocketClient.DefaultTargetPath;
         public const string PlayerPrefsKey = "ReachyMiniTeleop.LastRobotIp";
 

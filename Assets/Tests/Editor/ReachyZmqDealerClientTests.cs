@@ -100,7 +100,7 @@ namespace ReachyMiniTeleop.Tests.Editor
                 ReachyEndpointInputController.DefaultApiPort,
                 out string endpoint));
 
-            Assert.AreEqual("ws://192.168.1.20:8000/api/move/ws/set_target", endpoint);
+            Assert.AreEqual("ws://192.168.1.20:9000/api/move/ws/set_target", endpoint);
         }
 
         [Test]
@@ -111,7 +111,7 @@ namespace ReachyMiniTeleop.Tests.Editor
                 ReachyEndpointInputController.DefaultApiPort,
                 out string apiBaseUrl));
 
-            Assert.AreEqual("http://192.168.1.20:8000/api", apiBaseUrl);
+            Assert.AreEqual("http://192.168.1.20:9000/api", apiBaseUrl);
         }
 
         [Test]
@@ -122,7 +122,7 @@ namespace ReachyMiniTeleop.Tests.Editor
                 ReachyEndpointInputController.DefaultApiPort,
                 out string endpoint));
 
-            Assert.AreEqual("ws://192.168.1.20:8000/api/move/ws/set_target", endpoint);
+            Assert.AreEqual("ws://192.168.1.20:9000/api/move/ws/set_target", endpoint);
         }
 
         [Test]

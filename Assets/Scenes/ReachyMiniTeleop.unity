@@ -197,8 +197,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5b890f6f7c70c5b44a375e8007031d04, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  targetWebSocketUrl: ws://localhost:8000/api/move/ws/set_target
-  apiBaseUrl: http://localhost:8000/api
+  targetWebSocketUrl: ws://192.168.0.210:9000/api/move/ws/set_target
+  apiBaseUrl: http://192.168.0.210:9000/api
   autoStart: 0
   autoWakeOnStart: 1
   verboseLogging: 1
@@ -2432,9 +2432,9 @@ MonoBehaviour:
   zmqDealerClient: {fileID: 0}
   publisher: {fileID: 1003}
   config: {fileID: 11400000, guid: bbbbbbbb000000000000000000000001, type: 2}
-  apiPort: 8000
+  apiPort: 9000
   fallbackHost: localhost
-  placeholderHost: 192.168.1.20
+  placeholderHost: 192.168.0.210
   saveSuccessfulHost: 1
   showSceneKeypadOnSelect: 1
   openTouchScreenKeyboardOnSelect: 0
