@@ -1,6 +1,9 @@
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.IO;
+using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using ReachyMiniTeleop.Reachy;
 using UnityEngine;
@@ -44,6 +47,8 @@ namespace ReachyMiniTeleop.Transport
         private readonly ConcurrentQueue<string> _incomingQueue = new ConcurrentQueue<string>();
         private readonly ConcurrentQueue<MainThreadLog> _mainThreadLogs = new ConcurrentQueue<MainThreadLog>();
         private readonly ConcurrentQueue<bool> _connectionStateQueue = new ConcurrentQueue<bool>();
+        private readonly ConcurrentQueue<DaemonHttpRequest> _httpRequestQueue = new ConcurrentQueue<DaemonHttpRequest>();
+        private readonly ConcurrentQueue<DaemonHttpResult> _httpResultQueue = new ConcurrentQueue<DaemonHttpResult>();
         private readonly ManualResetEventSlim _stopSignal = new ManualResetEventSlim(false);
         private readonly AutoResetEvent _sendSignal = new AutoResetEvent(false);
         private Coroutine _wakeCoroutine;
@@ -87,6 +92,16 @@ namespace ReachyMiniTeleop.Transport
             while (_connectionStateQueue.TryDequeue(out bool isConnectedOrConnecting))
             {
                 ConnectionStateChanged?.Invoke(isConnectedOrConnecting);
+            }
+
+            while (_httpRequestQueue.TryDequeue(out var request))
+            {
+                HttpRequestStarted?.Invoke(request);
+            }
+
+            while (_httpResultQueue.TryDequeue(out var result))
+            {
+                HttpRequestCompleted?.Invoke(result);
             }
         }
 
@@ -159,7 +174,7 @@ namespace ReachyMiniTeleop.Transport
                 return;
             }
 
-            StartCoroutine(PostJson(url, json, "Face sound"));
+            PostJson(url, json, "Face sound");
         }
 
         public void StopSound()
@@ -170,7 +185,7 @@ namespace ReachyMiniTeleop.Transport
                 return;
             }
 
-            StartCoroutine(PostEmpty(url, "Stop sound"));
+            PostJson(url, string.Empty, "Stop sound");
         }
 
         public void StartClient()
@@ -595,16 +610,41 @@ namespace ReachyMiniTeleop.Transport
             }
         }
 
-        private IEnumerator PostJson(string url, string json, string operationName)
+        private void PostJson(string url, string json, string operationName)
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+                !string.Equals(uri.Scheme, "http", StringComparison.OrdinalIgnoreCase))
+            {
+                StartCoroutine(PostJsonWithUnityWebRequest(url, json, operationName));
+                return;
+            }
+
+            ReportHttpRequest(operationName, url, json);
+
+            int timeoutMilliseconds = Math.Max(1, requestTimeoutSeconds) * 1000;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                RawHttpResult result = SendRawHttpPost(uri, json, timeoutMilliseconds);
+                ReportHttpResult(
+                    operationName,
+                    result.ResponseCode,
+                    result.Error,
+                    result.Body,
+                    result.Success);
+            });
+        }
+
+        private IEnumerator PostJsonWithUnityWebRequest(string url, string json, string operationName)
         {
             ReportHttpRequest(operationName, url, json);
 
             using (var request = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST))
             {
-                byte[] body = System.Text.Encoding.UTF8.GetBytes(json);
+                byte[] body = Encoding.UTF8.GetBytes(json ?? string.Empty);
                 request.downloadHandler = new DownloadHandlerBuffer();
                 request.uploadHandler = new UploadHandlerRaw(body);
-                request.SetRequestHeader("Content-Type", "application/json");
+                if (!string.IsNullOrEmpty(json))
+                    request.SetRequestHeader("Content-Type", "application/json");
                 request.timeout = Mathf.Max(1, requestTimeoutSeconds);
                 yield return request.SendWebRequest();
 
@@ -625,7 +665,7 @@ namespace ReachyMiniTeleop.Transport
 
         private void ReportHttpRequest(string operationName, string url, string body)
         {
-            HttpRequestStarted?.Invoke(new DaemonHttpRequest(operationName, url, body));
+            _httpRequestQueue.Enqueue(new DaemonHttpRequest(operationName, url, body));
         }
 
         private void ReportHttpResult(
@@ -635,12 +675,80 @@ namespace ReachyMiniTeleop.Transport
             string detail,
             bool success)
         {
-            HttpRequestCompleted?.Invoke(new DaemonHttpResult(
+            _httpResultQueue.Enqueue(new DaemonHttpResult(
                 operationName,
                 responseCode,
                 error,
                 detail,
                 success));
+        }
+
+        private static RawHttpResult SendRawHttpPost(Uri uri, string body, int timeoutMilliseconds)
+        {
+            try
+            {
+                int port = uri.Port > 0 ? uri.Port : 80;
+                byte[] bodyBytes = Encoding.UTF8.GetBytes(body ?? string.Empty);
+
+                using (var client = new TcpClient())
+                {
+                    var connectTask = client.ConnectAsync(uri.Host, port);
+                    if (!connectTask.Wait(timeoutMilliseconds))
+                        return RawHttpResult.Failed(0, "Connection timeout", string.Empty);
+
+                    using (NetworkStream stream = client.GetStream())
+                    {
+                        stream.ReadTimeout = timeoutMilliseconds;
+                        stream.WriteTimeout = timeoutMilliseconds;
+
+                        string hostHeader = uri.IsDefaultPort ? uri.Host : $"{uri.Host}:{uri.Port}";
+                        string path = string.IsNullOrEmpty(uri.PathAndQuery) ? "/" : uri.PathAndQuery;
+                        var header = new StringBuilder();
+                        header.Append("POST ").Append(path).Append(" HTTP/1.1\r\n");
+                        header.Append("Host: ").Append(hostHeader).Append("\r\n");
+                        header.Append("Content-Length: ").Append(bodyBytes.Length).Append("\r\n");
+                        if (bodyBytes.Length > 0)
+                            header.Append("Content-Type: application/json\r\n");
+                        header.Append("Connection: close\r\n");
+                        header.Append("\r\n");
+
+                        byte[] headerBytes = Encoding.ASCII.GetBytes(header.ToString());
+                        stream.Write(headerBytes, 0, headerBytes.Length);
+                        if (bodyBytes.Length > 0)
+                            stream.Write(bodyBytes, 0, bodyBytes.Length);
+                        stream.Flush();
+
+                        using (var reader = new StreamReader(stream, Encoding.UTF8))
+                        {
+                            string response = reader.ReadToEnd();
+                            return ParseRawHttpResponse(response);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return RawHttpResult.Failed(0, ex.Message, string.Empty);
+            }
+        }
+
+        private static RawHttpResult ParseRawHttpResponse(string response)
+        {
+            if (string.IsNullOrEmpty(response))
+                return RawHttpResult.Failed(0, "Empty HTTP response", string.Empty);
+
+            int statusLineEnd = response.IndexOf("\r\n", StringComparison.Ordinal);
+            string statusLine = statusLineEnd >= 0 ? response.Substring(0, statusLineEnd) : response;
+            string[] statusParts = statusLine.Split(' ');
+            long responseCode = 0;
+            if (statusParts.Length >= 2)
+                long.TryParse(statusParts[1], out responseCode);
+
+            int bodyStart = response.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+            string responseBody = bodyStart >= 0 ? response.Substring(bodyStart + 4) : string.Empty;
+            bool success = responseCode >= 200 && responseCode <= 299;
+            string error = success ? string.Empty : statusLine;
+            return new RawHttpResult(responseCode, error, responseBody, success);
         }
 
         [Serializable]
@@ -663,6 +771,27 @@ namespace ReachyMiniTeleop.Transport
             {
                 this.message = message;
                 this.isWarning = isWarning;
+            }
+        }
+
+        private readonly struct RawHttpResult
+        {
+            public readonly long ResponseCode;
+            public readonly string Error;
+            public readonly string Body;
+            public readonly bool Success;
+
+            public RawHttpResult(long responseCode, string error, string body, bool success)
+            {
+                ResponseCode = responseCode;
+                Error = error;
+                Body = body;
+                Success = success;
+            }
+
+            public static RawHttpResult Failed(long responseCode, string error, string body)
+            {
+                return new RawHttpResult(responseCode, error, body, false);
             }
         }
 

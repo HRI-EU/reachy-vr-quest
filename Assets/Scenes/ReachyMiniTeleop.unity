@@ -1,4 +1,4 @@
-﻿%YAML 1.1
+%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!29 &1
 OcclusionCullingSettings:
@@ -164,7 +164,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: aaaaaaaa000000000000000000000003, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: 
   skeletonProviderBehaviour: {fileID: 3003}
   messageSenderBehaviour: {fileID: 1005}
@@ -182,7 +182,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: aaaaaaaa000000000000000000000005, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: 
   publisher: {fileID: 1003}
   logPayloads: 0
@@ -217,7 +217,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 091c6fbb664e83443a532617a525257f, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ReachyMiniTeleop.Reachy.ReachyFaceSoundTrigger
   faceExpressions: {fileID: 1173475113}
   daemonClient: {fileID: 1005}
@@ -3791,7 +3791,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a95044baf65b10c4e89b246d2f881ac9, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Oculus.VR::OVRFaceExpressions
 --- !u!1 &1173676039
 GameObject:
