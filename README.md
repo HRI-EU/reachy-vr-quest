@@ -38,6 +38,7 @@ Follow the [Reachy Mini quickstart documentation](https://huggingface.co/docs/re
 When the app opens, use the in-scene UI:
 
 - Enter only the Reachy server host or IP address, for example `192.168.1.20`.
+- Leave the default ports, or enter numeric overrides for `Robot Pose Port` and `WebRTC Port`.
 - Enable `Connect With Pose Data` to send head, body, and antenna targets to the robot.
 - Your head and body orientation map to the robot's head and body yaw.
 - Your hand orientation maps to the robot's antennas.
@@ -45,8 +46,8 @@ When the app opens, use the in-scene UI:
 
 The Quest app builds the endpoints automatically:
 
-- Pose data: `ws://<host>:8000/api/move/ws/set_target`
-- Video signaling: `ws://<host>:8443`
+- Pose data: `ws://<host>:<robot-pose-port>/api/move/ws/set_target` (default `8000`)
+- Video signaling: `ws://<host>:<webrtc-port>` (default `8443`)
 
 For a complete walkthrough, watch the tutorial:
 <div align="center">
@@ -118,21 +119,21 @@ Default teleop config:
 
 ## Runtime Menu
 
-The scene menu has one `Robot IP` input. Enter only the host, for example:
+The scene menu has a `Robot IP` input plus numeric port inputs for pose and video. Enter only the host in `Robot IP`, for example:
 
 ```text
 192.168.1.20
 ```
 
-Do not enter `tcp://`, `ws://`, a port, or a path. The app builds the runtime endpoints:
+Do not enter `tcp://`, `ws://`, or a path in any field. Put only numbers in the port fields. The app builds the runtime endpoints:
 
-- Pose data: `ws://<host>:8000/api/move/ws/set_target`
-- Daemon API: `http://<host>:8000/api`
-- Video signaling: `ws://<host>:8443`
+- Pose data: `ws://<host>:<robot-pose-port>/api/move/ws/set_target`
+- Daemon API: `http://<host>:<robot-pose-port>/api`
+- Video signaling: `ws://<host>:<webrtc-port>`
 
-`Connect With Pose Data` starts/stops daemon WebSocket pose publishing. The last successfully used host is saved with `PlayerPrefs` and restored on the next launch.
+The default pose port is `8000`; the default WebRTC signaling port is `8443`. `Connect With Pose Data` starts/stops daemon WebSocket pose publishing. The last successfully used host and ports are saved with `PlayerPrefs` and restored on the next launch.
 
-The Quest/XR Simulation input path uses an in-scene numeric keypad. The Android system keyboard is not the primary path because it is unreliable for this world-space UI.
+The Quest/XR Simulation input path uses an in-scene numeric keypad for the host and port fields. The Android system keyboard is not the primary path because it is unreliable for this world-space UI.
 
 The `MainMenu` uses `HeadFollowMenu` so it floats below the view and follows headset yaw with angular and position dead zones. It is not parented directly to the camera.
 
@@ -142,7 +143,7 @@ Unity receives Reachy camera video through a receive-only WebRTC client:
 
 - `WebRTCClient` connects to the daemon GStreamer signaling server, registers as a listener, selects the `reachymini` producer, answers the robot offer, and receives the first remote `VideoStreamTrack`.
 - WebSocketSharp handles GStreamer signaling.
-- `ReachyVideoInputController` reuses the `Robot IP` host and builds `ws://<host>:8443`.
+- `ReachyVideoInputController` reuses the `Robot IP` host and builds `ws://<host>:<webrtc-port>`, defaulting to `8443`.
 - `ConnectVideo` is a Toggle. Turning it on connects video; turning it off disconnects.
 - The video surface becomes visible while connecting/connected and clears/hides on signaling close, error, or manual disconnect.
 
@@ -215,10 +216,10 @@ For a real Quest build:
 5. Assign `CenterCamAnchor`, `CenterEyeFront`, `CenterEyeUp`, and optional hand skeleton references on `MetaBodySkeletonProvider`.
 6. Set `ReachyHeadCommandPublisher.skeletonProviderBehaviour` to `MetaBodySkeletonProvider`.
 7. Enter the PC/robot LAN IP in the scene menu.
-8. Make sure `reachy-mini-daemon` is running and reachable on ports `8000` and `8443`.
+8. Make sure `reachy-mini-daemon` is running and reachable on the configured ports, defaulting to `8000` and `8443`.
 9. Enable `Connect With Pose Data` for pose control and `ConnectVideo` for camera video.
 
-Port `8000` is fixed in the UI for pose/API access. Port `8443` is fixed in the video UI for signaling. Changing the UI host does not change the Reachy payload math or coordinate conversion.
+Port `8000` is the default for pose/API access. Port `8443` is the default for video signaling. Changing the UI host or ports does not change the Reachy payload math or coordinate conversion.
 
 If `MetaSourceDataProvider` is missing after package restore, add it from the Meta XR Movement package to `QuestTrackingProvider_Template`.
 

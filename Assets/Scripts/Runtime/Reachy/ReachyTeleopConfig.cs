@@ -6,8 +6,8 @@ namespace ReachyMiniTeleop.Reachy
     public sealed class ReachyTeleopConfig : ScriptableObject
     {
         [Header("Transport")]
-        public string daemonTargetWebSocketUrl = "ws://localhost:9000/api/move/ws/set_target";
-        public string daemonApiBaseUrl = "http://localhost:9000/api";
+        public string daemonTargetWebSocketUrl = "ws://localhost:8000/api/move/ws/set_target";
+        public string daemonApiBaseUrl = "http://localhost:8000/api";
         [System.Obsolete("Legacy ZMQ endpoint. Direct daemon mode uses daemonTargetWebSocketUrl.")]
         public string endpoint = "tcp://localhost:40000";
         [System.Obsolete("Legacy ZMQ identity. Direct daemon mode does not use identities.")]

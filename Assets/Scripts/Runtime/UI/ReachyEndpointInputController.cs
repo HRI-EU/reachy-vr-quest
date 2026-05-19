@@ -10,12 +10,16 @@ namespace ReachyMiniTeleop.UI
 {
     public sealed class ReachyEndpointInputController : MonoBehaviour
     {
-        public const int DefaultApiPort = 9000;
+        public const int DefaultApiPort = 8000;
         public const string DefaultTargetPath = ReachyDaemonTargetWebSocketClient.DefaultTargetPath;
         public const string PlayerPrefsKey = "ReachyMiniTeleop.LastRobotIp";
+        public const string PosePortPlayerPrefsKey = "ReachyMiniTeleop.LastPosePort";
+        public const string WebRtcPortPlayerPrefsKey = "ReachyMiniTeleop.LastWebRtcPort";
 
         [Header("References")]
         public TMP_InputField robotIpInput;
+        public TMP_InputField robotPosePortInput;
+        public TMP_InputField webRtcPortInput;
         public TextMeshProUGUI statusLabel;
         public Toggle connectPoseToggle;
         public ReachyDaemonTargetWebSocketClient daemonClient;
@@ -39,7 +43,10 @@ namespace ReachyMiniTeleop.UI
         private bool _suppressToggleEvents;
         private bool _suppressInputEvents;
         private TouchScreenKeyboard _touchScreenKeyboard;
-        private EventTrigger.Entry _keyboardClickEntry;
+        private TMP_InputField _activeKeyboardInput;
+        private EventTrigger.Entry _robotIpKeyboardClickEntry;
+        private EventTrigger.Entry _robotPosePortKeyboardClickEntry;
+        private EventTrigger.Entry _webRtcPortKeyboardClickEntry;
 
         private void Awake()
         {
@@ -53,6 +60,7 @@ namespace ReachyMiniTeleop.UI
         private void OnEnable()
         {
             InitializeInputText();
+            InitializePortInputs();
             EnsureSceneKeypad();
 
             if (connectPoseToggle != null)
@@ -62,7 +70,21 @@ namespace ReachyMiniTeleop.UI
             {
                 robotIpInput.onSelect.AddListener(OnRobotIpInputSelected);
                 robotIpInput.onEndEdit.AddListener(OnRobotIpInputEndEdit);
-                InstallKeyboardPointerTrigger();
+                InstallKeyboardPointerTrigger(robotIpInput, ref _robotIpKeyboardClickEntry);
+            }
+
+            if (robotPosePortInput != null)
+            {
+                robotPosePortInput.onSelect.AddListener(OnRobotPosePortInputSelected);
+                robotPosePortInput.onEndEdit.AddListener(OnRobotPosePortInputEndEdit);
+                InstallKeyboardPointerTrigger(robotPosePortInput, ref _robotPosePortKeyboardClickEntry);
+            }
+
+            if (webRtcPortInput != null)
+            {
+                webRtcPortInput.onSelect.AddListener(OnWebRtcPortInputSelected);
+                webRtcPortInput.onEndEdit.AddListener(OnWebRtcPortInputEndEdit);
+                InstallKeyboardPointerTrigger(webRtcPortInput, ref _webRtcPortKeyboardClickEntry);
             }
 
             SetStatus("Disconnected");
@@ -82,10 +104,25 @@ namespace ReachyMiniTeleop.UI
             {
                 robotIpInput.onSelect.RemoveListener(OnRobotIpInputSelected);
                 robotIpInput.onEndEdit.RemoveListener(OnRobotIpInputEndEdit);
-                RemoveKeyboardPointerTrigger();
+                RemoveKeyboardPointerTrigger(robotIpInput, ref _robotIpKeyboardClickEntry);
+            }
+
+            if (robotPosePortInput != null)
+            {
+                robotPosePortInput.onSelect.RemoveListener(OnRobotPosePortInputSelected);
+                robotPosePortInput.onEndEdit.RemoveListener(OnRobotPosePortInputEndEdit);
+                RemoveKeyboardPointerTrigger(robotPosePortInput, ref _robotPosePortKeyboardClickEntry);
+            }
+
+            if (webRtcPortInput != null)
+            {
+                webRtcPortInput.onSelect.RemoveListener(OnWebRtcPortInputSelected);
+                webRtcPortInput.onEndEdit.RemoveListener(OnWebRtcPortInputEndEdit);
+                RemoveKeyboardPointerTrigger(webRtcPortInput, ref _webRtcPortKeyboardClickEntry);
             }
 
             _touchScreenKeyboard = null;
+            _activeKeyboardInput = null;
         }
 
         public void ConnectFromCurrentInput()
@@ -96,8 +133,15 @@ namespace ReachyMiniTeleop.UI
         public bool TryConnectFromCurrentInput()
         {
             string rawHost = robotIpInput != null ? robotIpInput.text : string.Empty;
-            if (!TryBuildDaemonTargetWebSocketUrlFromHost(rawHost, apiPort, out string endpoint, out string host) ||
-                !TryBuildDaemonApiBaseUrlFromHost(host, apiPort, out string apiBaseUrl))
+            if (!TryGetPortFromInput(robotPosePortInput, apiPort, out int posePort))
+            {
+                SetStatus("Enter a valid pose port");
+                SetConnectToggleWithoutNotify(false);
+                return false;
+            }
+
+            if (!TryBuildDaemonTargetWebSocketUrlFromHost(rawHost, posePort, out string endpoint, out string host) ||
+                !TryBuildDaemonApiBaseUrlFromHost(host, posePort, out string apiBaseUrl))
             {
                 SetStatus("Enter a valid robot IP");
                 SetConnectToggleWithoutNotify(false);
@@ -127,14 +171,18 @@ namespace ReachyMiniTeleop.UI
             if (saveSuccessfulHost)
             {
                 PlayerPrefs.SetString(PlayerPrefsKey, host);
+                PlayerPrefs.SetInt(PosePortPlayerPrefsKey, posePort);
                 PlayerPrefs.Save();
             }
 
             if (robotIpInput != null)
                 robotIpInput.SetTextWithoutNotify(host);
 
+            if (robotPosePortInput != null)
+                robotPosePortInput.SetTextWithoutNotify(posePort.ToString());
+
             HideSceneKeypad();
-            SetStatus($"Connecting to {host}:{apiPort}");
+            SetStatus($"Connecting to {host}:{posePort}");
             return true;
         }
 
@@ -194,6 +242,36 @@ namespace ReachyMiniTeleop.UI
             return true;
         }
 
+        public static bool TryParsePortInput(string portInput, int fallbackPort, out int port)
+        {
+            port = 0;
+
+            if (fallbackPort <= 0 || fallbackPort > 65535)
+                return false;
+
+            if (string.IsNullOrWhiteSpace(portInput))
+            {
+                port = fallbackPort;
+                return true;
+            }
+
+            string trimmed = portInput.Trim();
+            if (!int.TryParse(trimmed, out port))
+                return false;
+
+            return port > 0 && port <= 65535;
+        }
+
+        public static bool TryGetSavedPort(string playerPrefsKey, int fallbackPort, out int port)
+        {
+            port = fallbackPort;
+
+            if (PlayerPrefs.HasKey(playerPrefsKey))
+                return TryParsePortInput(PlayerPrefs.GetInt(playerPrefsKey).ToString(), fallbackPort, out port);
+
+            return TryParsePortInput(string.Empty, fallbackPort, out port);
+        }
+
         public static bool TryExtractHost(string endpoint, out string host)
         {
             host = null;
@@ -221,7 +299,7 @@ namespace ReachyMiniTeleop.UI
 
         private void OnRobotIpInputSelected(string _)
         {
-            OpenKeyboardInput();
+            OpenKeyboardInput(robotIpInput);
         }
 
         private void OnRobotIpInputEndEdit(string value)
@@ -231,6 +309,26 @@ namespace ReachyMiniTeleop.UI
 
             if (robotIpInput != null)
                 robotIpInput.SetTextWithoutNotify(value.Trim());
+        }
+
+        private void OnRobotPosePortInputSelected(string _)
+        {
+            OpenKeyboardInput(robotPosePortInput);
+        }
+
+        private void OnRobotPosePortInputEndEdit(string value)
+        {
+            NormalizePortInput(robotPosePortInput, value, apiPort);
+        }
+
+        private void OnWebRtcPortInputSelected(string _)
+        {
+            OpenKeyboardInput(webRtcPortInput);
+        }
+
+        private void OnWebRtcPortInputEndEdit(string value)
+        {
+            NormalizePortInput(webRtcPortInput, value, ReachyVideoInputController.DefaultSignalingPort);
         }
 
         private void InitializeInputText()
@@ -257,6 +355,28 @@ namespace ReachyMiniTeleop.UI
                 placeholder.text = placeholderHost;
         }
 
+        private void InitializePortInputs()
+        {
+            InitializePortInput(robotPosePortInput, PosePortPlayerPrefsKey, apiPort);
+            InitializePortInput(webRtcPortInput, WebRtcPortPlayerPrefsKey, ReachyVideoInputController.DefaultSignalingPort);
+        }
+
+        private void InitializePortInput(TMP_InputField input, string playerPrefsKey, int fallbackPort)
+        {
+            if (input == null)
+                return;
+
+            if (!TryGetSavedPort(playerPrefsKey, fallbackPort, out int port))
+                port = fallbackPort;
+
+            input.contentType = TMP_InputField.ContentType.IntegerNumber;
+            input.characterLimit = 5;
+            input.SetTextWithoutNotify(port.ToString());
+
+            if (input.placeholder is TMP_Text placeholder)
+                placeholder.text = fallbackPort.ToString();
+        }
+
         public void ShowSceneKeypad()
         {
             if (keypadRoot != null)
@@ -271,55 +391,66 @@ namespace ReachyMiniTeleop.UI
 
         public void AppendKeypadText(string value)
         {
-            if (robotIpInput == null || string.IsNullOrEmpty(value))
+            TMP_InputField input = GetActiveKeyboardInput();
+            if (input == null || string.IsNullOrEmpty(value))
                 return;
 
-            robotIpInput.SetTextWithoutNotify((robotIpInput.text + value).Trim());
-            robotIpInput.caretPosition = robotIpInput.text.Length;
+            if (IsPortInput(input) && !char.IsDigit(value[0]))
+                return;
+
+            input.SetTextWithoutNotify((input.text + value).Trim());
+            input.caretPosition = input.text.Length;
         }
 
         public void BackspaceKeypadText()
         {
-            if (robotIpInput == null || string.IsNullOrEmpty(robotIpInput.text))
+            TMP_InputField input = GetActiveKeyboardInput();
+            if (input == null || string.IsNullOrEmpty(input.text))
                 return;
 
-            robotIpInput.SetTextWithoutNotify(robotIpInput.text.Substring(0, robotIpInput.text.Length - 1));
-            robotIpInput.caretPosition = robotIpInput.text.Length;
+            input.SetTextWithoutNotify(input.text.Substring(0, input.text.Length - 1));
+            input.caretPosition = input.text.Length;
         }
 
         public void ClearKeypadText()
         {
-            if (robotIpInput == null)
+            TMP_InputField input = GetActiveKeyboardInput();
+            if (input == null)
                 return;
 
-            robotIpInput.SetTextWithoutNotify(string.Empty);
+            input.SetTextWithoutNotify(string.Empty);
         }
 
-        private void OpenKeyboardInput()
+        private void OpenKeyboardInput(TMP_InputField input)
         {
+            if (input == null)
+                return;
+
+            _activeKeyboardInput = input;
+
             if (showSceneKeypadOnSelect)
                 ShowSceneKeypad();
 
-            OpenTouchScreenKeyboard();
+            OpenTouchScreenKeyboard(input);
         }
 
-        private void OpenTouchScreenKeyboard()
+        private void OpenTouchScreenKeyboard(TMP_InputField input)
         {
-            if (!openTouchScreenKeyboardOnSelect || robotIpInput == null)
+            if (!openTouchScreenKeyboardOnSelect || input == null)
                 return;
 
             if (Application.platform != RuntimePlatform.Android && !Application.isMobilePlatform)
                 return;
 
             _touchScreenKeyboard = TouchScreenKeyboard.Open(
-                robotIpInput.text,
-                TouchScreenKeyboardType.NumbersAndPunctuation,
+                input.text,
+                IsPortInput(input) ? TouchScreenKeyboardType.NumberPad : TouchScreenKeyboardType.NumbersAndPunctuation,
                 false,
                 false,
                 false,
                 false,
-                keyboardPlaceholder,
-                Mathf.Max(robotIpInput.characterLimit, 0));
+                IsPortInput(input) ? GetDefaultPortForInput(input).ToString() : keyboardPlaceholder,
+                Mathf.Max(input.characterLimit, 0));
 
             if (_touchScreenKeyboard != null)
                 _touchScreenKeyboard.active = true;
@@ -327,14 +458,15 @@ namespace ReachyMiniTeleop.UI
 
         private void SyncTouchScreenKeyboard()
         {
-            if (_touchScreenKeyboard == null || robotIpInput == null)
+            TMP_InputField input = GetActiveKeyboardInput();
+            if (_touchScreenKeyboard == null || input == null)
                 return;
 
-            if (robotIpInput.text != _touchScreenKeyboard.text)
+            if (input.text != _touchScreenKeyboard.text)
             {
                 _suppressInputEvents = true;
-                robotIpInput.SetTextWithoutNotify(_touchScreenKeyboard.text);
-                robotIpInput.caretPosition = robotIpInput.text.Length;
+                input.SetTextWithoutNotify(_touchScreenKeyboard.text);
+                input.caretPosition = input.text.Length;
                 _suppressInputEvents = false;
             }
 
@@ -342,38 +474,39 @@ namespace ReachyMiniTeleop.UI
                 _touchScreenKeyboard.status == TouchScreenKeyboard.Status.Canceled ||
                 _touchScreenKeyboard.status == TouchScreenKeyboard.Status.LostFocus)
             {
-                robotIpInput.SetTextWithoutNotify(robotIpInput.text.Trim());
+                input.SetTextWithoutNotify(input.text.Trim());
                 _touchScreenKeyboard = null;
             }
         }
 
-        private void InstallKeyboardPointerTrigger()
+        private void InstallKeyboardPointerTrigger(TMP_InputField input, ref EventTrigger.Entry entry)
         {
-            if (robotIpInput == null)
+            if (input == null)
                 return;
 
-            var trigger = robotIpInput.GetComponent<EventTrigger>();
+            var trigger = input.GetComponent<EventTrigger>();
             if (trigger == null)
-                trigger = robotIpInput.gameObject.AddComponent<EventTrigger>();
+                trigger = input.gameObject.AddComponent<EventTrigger>();
 
-            if (_keyboardClickEntry != null)
+            if (entry != null)
                 return;
 
-            _keyboardClickEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerClick };
-            _keyboardClickEntry.callback.AddListener(_ => OpenKeyboardInput());
-            trigger.triggers.Add(_keyboardClickEntry);
+            TMP_InputField capturedInput = input;
+            entry = new EventTrigger.Entry { eventID = EventTriggerType.PointerClick };
+            entry.callback.AddListener(_ => OpenKeyboardInput(capturedInput));
+            trigger.triggers.Add(entry);
         }
 
-        private void RemoveKeyboardPointerTrigger()
+        private void RemoveKeyboardPointerTrigger(TMP_InputField input, ref EventTrigger.Entry entry)
         {
-            if (robotIpInput == null || _keyboardClickEntry == null)
+            if (input == null || entry == null)
                 return;
 
-            var trigger = robotIpInput.GetComponent<EventTrigger>();
+            var trigger = input.GetComponent<EventTrigger>();
             if (trigger != null)
-                trigger.triggers.Remove(_keyboardClickEntry);
+                trigger.triggers.Remove(entry);
 
-            _keyboardClickEntry = null;
+            entry = null;
         }
 
         private void SetConnectToggleWithoutNotify(bool value)
@@ -390,6 +523,45 @@ namespace ReachyMiniTeleop.UI
         {
             if (statusLabel != null)
                 statusLabel.text = message;
+        }
+
+        private bool TryGetPortFromInput(TMP_InputField input, int fallbackPort, out int port)
+        {
+            string rawPort = input != null ? input.text : string.Empty;
+            return TryParsePortInput(rawPort, fallbackPort, out port);
+        }
+
+        private void NormalizePortInput(TMP_InputField input, string value, int fallbackPort)
+        {
+            if (_suppressInputEvents || input == null)
+                return;
+
+            string trimmed = value.Trim();
+            if (TryParsePortInput(trimmed, fallbackPort, out int port))
+                input.SetTextWithoutNotify(port.ToString());
+            else
+                input.SetTextWithoutNotify(trimmed);
+        }
+
+        private TMP_InputField GetActiveKeyboardInput()
+        {
+            if (_activeKeyboardInput != null)
+                return _activeKeyboardInput;
+
+            return robotIpInput;
+        }
+
+        private bool IsPortInput(TMP_InputField input)
+        {
+            return input != null && (input == robotPosePortInput || input == webRtcPortInput);
+        }
+
+        private int GetDefaultPortForInput(TMP_InputField input)
+        {
+            if (input == webRtcPortInput)
+                return ReachyVideoInputController.DefaultSignalingPort;
+
+            return apiPort;
         }
 
         public static bool TryNormalizeHostInput(string hostInput, out string host)

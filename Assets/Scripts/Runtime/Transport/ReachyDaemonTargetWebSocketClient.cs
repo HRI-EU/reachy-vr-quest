@@ -11,13 +11,13 @@ namespace ReachyMiniTeleop.Transport
 {
     public sealed class ReachyDaemonTargetWebSocketClient : MonoBehaviour, IReachyMessageSender
     {
-        public const int DefaultApiPort = 9000;
+        public const int DefaultApiPort = 8000;
         public const string DefaultTargetPath = "/api/move/ws/set_target";
         public const string DefaultApiPath = "/api";
 
         [Header("Reachy Daemon")]
-        public string targetWebSocketUrl = "ws://192.168.0.210:9000/api/move/ws/set_target";
-        public string apiBaseUrl = "http://192.168.0.210:9000/api";
+        public string targetWebSocketUrl = "ws://192.168.0.210:8000/api/move/ws/set_target";
+        public string apiBaseUrl = "http://192.168.0.210:8000/api";
         public bool autoStart = false;
         public bool autoWakeOnStart = true;
         public bool verboseLogging = false;

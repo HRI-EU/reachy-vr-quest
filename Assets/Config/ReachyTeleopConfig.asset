@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aaaaaaaa000000000000000000000001, type: 3}
   m_Name: ReachyTeleopConfig
   m_EditorClassIdentifier: 
-  daemonTargetWebSocketUrl: ws://localhost:9000/api/move/ws/set_target
-  daemonApiBaseUrl: http://localhost:9000/api
+  daemonTargetWebSocketUrl: ws://localhost:8000/api/move/ws/set_target
+  daemonApiBaseUrl: http://localhost:8000/api
   endpoint: tcp://localhost:40000
   identity: body
   heartbeatInterval: 2

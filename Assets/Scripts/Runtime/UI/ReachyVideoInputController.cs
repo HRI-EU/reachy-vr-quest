@@ -11,6 +11,7 @@ namespace ReachyMiniTeleop.UI
         [Header("References")]
         public Toggle connectVideoToggle;
         public TMP_InputField robotIpInput;
+        public TMP_InputField webRtcPortInput;
         public WebRTCClient webRtcClient;
 
         [Header("Signaling")]
@@ -26,6 +27,8 @@ namespace ReachyMiniTeleop.UI
 
         private void OnEnable()
         {
+            InitializePortInput();
+
             if (webRtcClient != null)
                 webRtcClient.ConnectionStateChanged += OnWebRtcConnectionStateChanged;
 
@@ -59,7 +62,13 @@ namespace ReachyMiniTeleop.UI
             }
 
             string rawHost = robotIpInput != null ? robotIpInput.text : string.Empty;
-            if (!TryBuildSignalingUrlFromHost(rawHost, signalingPort, out string signalingUrl))
+            if (!TryGetSignalingPort(out int port))
+            {
+                Debug.LogError("[ReachyVideoInput] Enter a valid WebRTC port before connecting video.");
+                return false;
+            }
+
+            if (!TryBuildSignalingUrlFromHost(rawHost, port, out string signalingUrl))
             {
                 Debug.LogError("[ReachyVideoInput] Enter a valid robot IP before connecting video.");
                 return false;
@@ -68,7 +77,25 @@ namespace ReachyMiniTeleop.UI
             if (webRtcClient.IsConnectedOrConnecting)
                 return true;
 
-            return webRtcClient.Connect(signalingUrl);
+            bool started = webRtcClient.Connect(signalingUrl);
+            if (started)
+            {
+                if (ReachyEndpointInputController.TryNormalizeHostInput(rawHost, out string host))
+                {
+                    PlayerPrefs.SetString(ReachyEndpointInputController.PlayerPrefsKey, host);
+
+                    if (robotIpInput != null)
+                        robotIpInput.SetTextWithoutNotify(host);
+                }
+
+                PlayerPrefs.SetInt(ReachyEndpointInputController.WebRtcPortPlayerPrefsKey, port);
+                PlayerPrefs.Save();
+
+                if (webRtcPortInput != null)
+                    webRtcPortInput.SetTextWithoutNotify(port.ToString());
+            }
+
+            return started;
         }
 
         public void Disconnect()
@@ -111,6 +138,33 @@ namespace ReachyMiniTeleop.UI
         {
             if (!isConnectedOrConnecting)
                 SetToggleWithoutNotify(false);
+        }
+
+        private void InitializePortInput()
+        {
+            if (webRtcPortInput == null)
+                return;
+
+            if (!ReachyEndpointInputController.TryGetSavedPort(
+                    ReachyEndpointInputController.WebRtcPortPlayerPrefsKey,
+                    signalingPort,
+                    out int port))
+            {
+                port = signalingPort;
+            }
+
+            webRtcPortInput.contentType = TMP_InputField.ContentType.IntegerNumber;
+            webRtcPortInput.characterLimit = 5;
+            webRtcPortInput.SetTextWithoutNotify(port.ToString());
+
+            if (webRtcPortInput.placeholder is TMP_Text placeholder)
+                placeholder.text = signalingPort.ToString();
+        }
+
+        private bool TryGetSignalingPort(out int port)
+        {
+            string rawPort = webRtcPortInput != null ? webRtcPortInput.text : string.Empty;
+            return ReachyEndpointInputController.TryParsePortInput(rawPort, signalingPort, out port);
         }
 
         private void SetToggleWithoutNotify(bool value)
