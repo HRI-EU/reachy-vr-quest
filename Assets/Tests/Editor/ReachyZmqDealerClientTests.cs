@@ -115,6 +115,96 @@ namespace ReachyMiniTeleop.Tests.Editor
         }
 
         [Test]
+        public void TryBuildApiEndpointUrl_AppendsMediaPath()
+        {
+            Assert.IsTrue(ReachyDaemonTargetWebSocketClient.TryBuildApiEndpointUrl(
+                "http://192.168.1.20:8000/api",
+                ReachyDaemonTargetWebSocketClient.DefaultPlaySoundPath,
+                out string endpointUrl));
+
+            Assert.AreEqual("http://192.168.1.20:8000/api/media/play_sound", endpointUrl);
+        }
+
+        [Test]
+        public void TryBuildApiEndpointUrl_NormalizesTrailingSlashAndRelativePath()
+        {
+            Assert.IsTrue(ReachyDaemonTargetWebSocketClient.TryBuildApiEndpointUrl(
+                "http://192.168.1.20:8000/api/",
+                "media/stop_sound",
+                out string endpointUrl));
+
+            Assert.AreEqual("http://192.168.1.20:8000/api/media/stop_sound", endpointUrl);
+        }
+
+        [Test]
+        public void TryBuildPlaySoundJson_UsesFileField()
+        {
+            Assert.IsTrue(ReachyDaemonTargetWebSocketClient.TryBuildPlaySoundJson(
+                " wake_up.wav ",
+                out string json));
+
+            Assert.AreEqual("{\"file\":\"wake_up.wav\"}", json);
+        }
+
+        [Test]
+        public void TryBuildPlaySoundJson_RejectsEmptyFilename()
+        {
+            Assert.IsFalse(ReachyDaemonTargetWebSocketClient.TryBuildPlaySoundJson("", out _));
+            Assert.IsFalse(ReachyDaemonTargetWebSocketClient.TryBuildPlaySoundJson("   ", out _));
+        }
+
+        [Test]
+        public void FormatHttpResultStatus_ReportsSuccessfulSoundRequest()
+        {
+            string status = ReachyDaemonTargetWebSocketClient.FormatHttpResultStatus(
+                "Face sound",
+                200,
+                null,
+                "{\"status\":\"ok\"}",
+                true);
+
+            Assert.AreEqual("Face sound HTTP 200: ok", status);
+        }
+
+        [Test]
+        public void FormatHttpResultStatus_ExtractsFastApiDetail()
+        {
+            string status = ReachyDaemonTargetWebSocketClient.FormatHttpResultStatus(
+                "Face sound",
+                503,
+                null,
+                "{\"detail\":\"Backend not running\"}",
+                false);
+
+            Assert.AreEqual("Face sound HTTP 503: Backend not running", status);
+        }
+
+        [Test]
+        public void FormatHttpResultStatus_ReportsNetworkFailureWithoutStatusCode()
+        {
+            string status = ReachyDaemonTargetWebSocketClient.FormatHttpResultStatus(
+                "Face sound",
+                0,
+                "Cannot connect to destination host",
+                null,
+                false);
+
+            Assert.AreEqual("Face sound HTTP network: Cannot connect to destination host", status);
+        }
+
+        [Test]
+        public void FormatHttpRequestStatus_IncludesTargetUrl()
+        {
+            string status = ReachyDaemonTargetWebSocketClient.FormatHttpRequestStatus(
+                "Face sound",
+                "http://10.0.71.91:8000/api/media/play_sound");
+
+            Assert.AreEqual(
+                "Face sound request: http://10.0.71.91:8000/api/media/play_sound",
+                status);
+        }
+
+        [Test]
         public void TryBuildDaemonTargetWebSocketUrlFromHost_UsesCustomPosePort()
         {
             Assert.IsTrue(ReachyEndpointInputController.TryBuildDaemonTargetWebSocketUrlFromHost(

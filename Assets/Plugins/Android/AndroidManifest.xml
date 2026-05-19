@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools" android:installLocation="auto" xmlns:horizonos="http://schemas.horizonos/sdk">
-  <application android:label="@string/app_name" android:icon="@mipmap/app_icon" android:allowBackup="false">
+  <application android:label="@string/app_name" android:icon="@mipmap/app_icon" android:allowBackup="false" android:usesCleartextTraffic="true">
     <activity android:theme="@style/Theme.AppCompat.DayNight.NoActionBar" android:configChanges="locale|fontScale|keyboard|keyboardHidden|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode" android:launchMode="singleTask" android:name="com.unity3d.player.UnityPlayerGameActivity" android:excludeFromRecents="true" android:exported="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
@@ -16,6 +16,9 @@
   </application>
   <uses-feature android:name="android.hardware.vr.headtracking" android:version="1" android:required="true" />
   <uses-feature android:name="com.oculus.software.body_tracking" android:required="false" />
+  <uses-feature android:name="oculus.software.face_tracking" android:required="false" />
+  <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="com.oculus.permission.BODY_TRACKING" />
+  <uses-permission android:name="com.oculus.permission.FACE_TRACKING" />
   <horizonos:uses-horizonos-sdk horizonos:minSdkVersion="60" horizonos:targetSdkVersion="85" />
 </manifest>

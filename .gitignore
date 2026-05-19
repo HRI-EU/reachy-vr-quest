@@ -21,6 +21,7 @@ _Recovery
 
 # Unity generated meta files
 AGENTS.md
+.agents/
 
 # NuGetForUnity restored package payloads
 Assets/Packages/

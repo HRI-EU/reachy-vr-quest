@@ -1,4 +1,4 @@
-%YAML 1.1
+﻿%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!29 &1
 OcclusionCullingSettings:
@@ -131,6 +131,7 @@ GameObject:
   - component: {fileID: 1005}
   - component: {fileID: 1003}
   - component: {fileID: 1004}
+  - component: {fileID: 1006}
   m_Layer: 0
   m_Name: ReachyTeleopRuntime
   m_TagString: Untagged
@@ -163,13 +164,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: aaaaaaaa000000000000000000000003, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: 
   skeletonProviderBehaviour: {fileID: 3003}
   messageSenderBehaviour: {fileID: 1005}
   zmqDealerClient: {fileID: 0}
   config: {fileID: 11400000, guid: bbbbbbbb000000000000000000000001, type: 2}
-  publishOnEnable: 0
+  publishOnEnable: 1
   verbose: 1
 --- !u!114 &1004
 MonoBehaviour:
@@ -181,10 +182,10 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: aaaaaaaa000000000000000000000005, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: 
   publisher: {fileID: 1003}
-  logPayloads: 1
+  logPayloads: 0
 --- !u!114 &1005
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -205,6 +206,45 @@ MonoBehaviour:
   maxQueuedMessages: 3
   maxSendsPerFrame: 1
   requestTimeoutSeconds: 3
+  defaultSoundFile: wake_up.wav
+--- !u!114 &1006
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 091c6fbb664e83443a532617a525257f, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::ReachyMiniTeleop.Reachy.ReachyFaceSoundTrigger
+  faceExpressions: {fileID: 1173475113}
+  daemonClient: {fileID: 1005}
+  statusLabel: {fileID: 0}
+  autoFindReferences: 1
+  triggerEnabled: 1
+  globalCooldownSeconds: 2
+  bindings:
+  - expression: 24
+    soundFile: count.wav
+    triggerThreshold: 0.75
+    resetThreshold: 0.45
+  - expression: 32
+    soundFile: dance1.wav
+    triggerThreshold: 0.75
+    resetThreshold: 0.45
+  - expression: 0
+    soundFile: confused1.wav
+    triggerThreshold: 0.75
+    resetThreshold: 0.45
+  - expression: 68
+    soundFile: impatient1.wav
+    triggerThreshold: 0.75
+    resetThreshold: 0.45
+  showDebugStatus: 1
+  statusMessageSeconds: 2
+  statusPollIntervalSeconds: 0.25
 --- !u!1 &2000
 GameObject:
   m_ObjectHideFlags: 0
@@ -3567,6 +3607,7 @@ GameObject:
   - component: {fileID: 1173475110}
   - component: {fileID: 1173475109}
   - component: {fileID: 1173475108}
+  - component: {fileID: 1173475113}
   m_Layer: 0
   m_Name: '[BuildingBlock] Camera Rig'
   m_TagString: Untagged
@@ -3667,7 +3708,7 @@ MonoBehaviour:
   isInsightPassthroughEnabled: 1
   shouldBoundaryVisibilityBeSuppressed: 0
   requestBodyTrackingPermissionOnStartup: 1
-  requestFaceTrackingPermissionOnStartup: 0
+  requestFaceTrackingPermissionOnStartup: 1
   requestEyeTrackingPermissionOnStartup: 0
   requestScenePermissionOnStartup: 1
   requestRecordAudioPermissionOnStartup: 0
@@ -3740,6 +3781,18 @@ Transform:
   - {fileID: 25226177}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1173475113
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1173475107}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a95044baf65b10c4e89b246d2f881ac9, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Oculus.VR::OVRFaceExpressions
 --- !u!1 &1173676039
 GameObject:
   m_ObjectHideFlags: 0

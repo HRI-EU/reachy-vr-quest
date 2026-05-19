@@ -111,6 +111,7 @@ Default teleop config:
 
 - Pose target WebSocket: `ws://localhost:8000/api/move/ws/set_target`
 - Daemon API base: `http://localhost:8000/api`
+- Sound trigger endpoint: `http://localhost:8000/api/media/play_sound`
 - Send rate: `30 Hz`
 - Body yaw limit: `45 degrees`
 - Finger plane range: `90 degrees`
@@ -150,6 +151,27 @@ Unity receives Reachy camera video through a receive-only WebRTC client:
 The Reachy daemon GStreamer signaling port is `8443`. Keep Unity's `ReachyVideoInputController.DefaultSignalingPort` aligned with that backend default.
 
 In Quest builds, `localhost` means the headset, not the PC. Use the PC or robot LAN IP when the bridge runs outside the headset.
+
+## Sound Triggers
+
+`ReachyDaemonTargetWebSocketClient` can trigger robot speaker playback through the daemon REST API without touching the 30 Hz pose WebSocket stream.
+
+- `PlaySound("wake_up.wav")` posts `{"file":"wake_up.wav"}` to `http://<host>:<pose-port>/api/media/play_sound`.
+- `PlayDefaultSound()` plays the serialized `defaultSoundFile`, which defaults to `wake_up.wav`.
+- `StopSound()` posts to `http://<host>:<pose-port>/api/media/stop_sound`.
+
+These methods are public so they can be called from UnityEvents, buttons, or gesture trigger scripts. The `file` value can be a built-in Reachy Mini asset filename such as `wake_up.wav`, `go_sleep.wav`, `impatient1.wav`, `confused1.wav`, `count.wav`, or `dance1.wav`; it can also be a daemon-side absolute path or a filename uploaded to the daemon sound temp directory.
+
+`ReachyFaceSoundTrigger` maps Quest Pro `OVRFaceExpressions` weights to one-shot sound triggers. The main scene wires it to `[BuildingBlock] Camera Rig` and `ReachyTeleopRuntime` with these defaults:
+
+- `JawDrop` -> `count.wav`
+- `LipCornerPullerL` -> `dance1.wav`
+- `BrowLowererL` -> `confused1.wav`
+- `TongueOut` -> `impatient1.wav`
+
+Each mapping fires when the expression weight crosses its trigger threshold, rearms after it falls below its reset threshold, and shares a global cooldown to avoid repeated sound spam.
+
+For Quest Pro builds, face tracking support is set to `Supported`, visual face tracking is enabled, audio face tracking is disabled, and `OVRManager` requests face tracking permission on startup.
 
 ## Daemon Pose Wire Format
 

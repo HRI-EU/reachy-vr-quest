@@ -14,6 +14,8 @@ namespace ReachyMiniTeleop.Transport
         public const int DefaultApiPort = 8000;
         public const string DefaultTargetPath = "/api/move/ws/set_target";
         public const string DefaultApiPath = "/api";
+        public const string DefaultPlaySoundPath = "/media/play_sound";
+        public const string DefaultStopSoundPath = "/media/stop_sound";
 
         [Header("Reachy Daemon")]
         public string targetWebSocketUrl = "ws://192.168.0.210:8000/api/move/ws/set_target";
@@ -30,8 +32,13 @@ namespace ReachyMiniTeleop.Transport
         [Header("HTTP")]
         public int requestTimeoutSeconds = 3;
 
+        [Header("Sound")]
+        public string defaultSoundFile = "wake_up.wav";
+
         public event Action<string> OnReceiveData;
         public event Action<bool> ConnectionStateChanged;
+        public event Action<DaemonHttpRequest> HttpRequestStarted;
+        public event Action<DaemonHttpResult> HttpRequestCompleted;
 
         private readonly ConcurrentQueue<string> _outgoingQueue = new ConcurrentQueue<string>();
         private readonly ConcurrentQueue<string> _incomingQueue = new ConcurrentQueue<string>();
@@ -131,6 +138,39 @@ namespace ReachyMiniTeleop.Transport
 
             apiBaseUrl = normalizedUrl;
             return true;
+        }
+
+        public void PlayDefaultSound()
+        {
+            PlaySound(defaultSoundFile);
+        }
+
+        public void PlaySound(string file)
+        {
+            if (!TryBuildApiEndpointUrl(apiBaseUrl, DefaultPlaySoundPath, out string url))
+            {
+                Debug.LogError($"[ReachyDaemonTargetWebSocketClient] Invalid daemon API base URL: {apiBaseUrl}");
+                return;
+            }
+
+            if (!TryBuildPlaySoundJson(file, out string json))
+            {
+                Debug.LogError("[ReachyDaemonTargetWebSocketClient] Enter a sound filename before playing sound.");
+                return;
+            }
+
+            StartCoroutine(PostJson(url, json, "Face sound"));
+        }
+
+        public void StopSound()
+        {
+            if (!TryBuildApiEndpointUrl(apiBaseUrl, DefaultStopSoundPath, out string url))
+            {
+                Debug.LogError($"[ReachyDaemonTargetWebSocketClient] Invalid daemon API base URL: {apiBaseUrl}");
+                return;
+            }
+
+            StartCoroutine(PostEmpty(url, "Stop sound"));
         }
 
         public void StartClient()
@@ -418,6 +458,89 @@ namespace ReachyMiniTeleop.Transport
             return normalizedUrl.EndsWith(DefaultApiPath, StringComparison.OrdinalIgnoreCase);
         }
 
+        public static bool TryBuildApiEndpointUrl(string apiBaseUrl, string endpointPath, out string endpointUrl)
+        {
+            endpointUrl = null;
+
+            if (!IsValidApiBaseUrl(apiBaseUrl, out string normalizedBaseUrl) ||
+                string.IsNullOrWhiteSpace(endpointPath))
+            {
+                return false;
+            }
+
+            string normalizedPath = endpointPath.Trim();
+            if (!normalizedPath.StartsWith("/", StringComparison.Ordinal))
+                normalizedPath = "/" + normalizedPath;
+
+            endpointUrl = normalizedBaseUrl + normalizedPath;
+            return Uri.TryCreate(endpointUrl, UriKind.Absolute, out _);
+        }
+
+        public static bool TryBuildPlaySoundJson(string file, out string json)
+        {
+            json = null;
+            if (string.IsNullOrWhiteSpace(file))
+                return false;
+
+            json = JsonUtility.ToJson(new PlaySoundRequest(file.Trim()));
+            return true;
+        }
+
+        public static string FormatHttpResultStatus(
+            string operationName,
+            long responseCode,
+            string error,
+            string detail,
+            bool success)
+        {
+            string operation = string.IsNullOrWhiteSpace(operationName) ? "HTTP" : operationName.Trim();
+            string code = responseCode > 0 ? responseCode.ToString() : "network";
+            if (success)
+                return $"{operation} HTTP {code}: ok";
+
+            string message = ExtractHttpDetail(detail);
+            if (string.IsNullOrWhiteSpace(message))
+                message = string.IsNullOrWhiteSpace(error) ? "failed" : error.Trim();
+
+            return $"{operation} HTTP {code}: {TrimHttpMessage(message)}";
+        }
+
+        public static string FormatHttpRequestStatus(string operationName, string url)
+        {
+            string operation = string.IsNullOrWhiteSpace(operationName) ? "HTTP" : operationName.Trim();
+            string target = string.IsNullOrWhiteSpace(url) ? "unknown URL" : url.Trim();
+            return $"{operation} request: {target}";
+        }
+
+        private static string ExtractHttpDetail(string detail)
+        {
+            if (string.IsNullOrWhiteSpace(detail))
+                return string.Empty;
+
+            string trimmed = detail.Trim();
+            const string detailToken = "\"detail\":\"";
+            int detailStart = trimmed.IndexOf(detailToken, StringComparison.OrdinalIgnoreCase);
+            if (detailStart >= 0)
+            {
+                int valueStart = detailStart + detailToken.Length;
+                int valueEnd = trimmed.IndexOf('"', valueStart);
+                if (valueEnd > valueStart)
+                    return trimmed.Substring(valueStart, valueEnd - valueStart);
+            }
+
+            return trimmed;
+        }
+
+        private static string TrimHttpMessage(string message)
+        {
+            string trimmed = message.Trim();
+            const int maxLength = 96;
+            if (trimmed.Length <= maxLength)
+                return trimmed;
+
+            return trimmed.Substring(0, maxLength - 3) + "...";
+        }
+
         private IEnumerator WakeIfNeededRoutine()
         {
             if (!IsValidApiBaseUrl(apiBaseUrl, out string baseUrl))
@@ -448,12 +571,14 @@ namespace ReachyMiniTeleop.Transport
             }
 
             yield return PostEmpty($"{baseUrl}/motors/set_mode/enabled");
-            yield return PostEmpty($"{baseUrl}/move/play/wake_up");
+            yield return PostEmpty($"{baseUrl}/move/play/wake_up", "wake up");
             _wakeCoroutine = null;
         }
 
-        private IEnumerator PostEmpty(string url)
+        private IEnumerator PostEmpty(string url, string operationName = "POST")
         {
+            ReportHttpRequest(operationName, url, null);
+
             using (var request = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST))
             {
                 request.downloadHandler = new DownloadHandlerBuffer();
@@ -461,8 +586,71 @@ namespace ReachyMiniTeleop.Transport
                 request.timeout = Mathf.Max(1, requestTimeoutSeconds);
                 yield return request.SendWebRequest();
 
-                if (request.result != UnityWebRequest.Result.Success && verboseLogging)
-                    Debug.LogWarning($"[ReachyDaemonTargetWebSocketClient] POST {url} failed: {request.error}");
+                bool success = request.result == UnityWebRequest.Result.Success;
+                string detail = request.downloadHandler != null ? request.downloadHandler.text : string.Empty;
+                ReportHttpResult(operationName, request.responseCode, request.error, detail, success);
+
+                if (!success && verboseLogging)
+                    Debug.LogWarning($"[ReachyDaemonTargetWebSocketClient] {FormatHttpResultStatus(operationName, request.responseCode, request.error, detail, false)}");
+            }
+        }
+
+        private IEnumerator PostJson(string url, string json, string operationName)
+        {
+            ReportHttpRequest(operationName, url, json);
+
+            using (var request = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST))
+            {
+                byte[] body = System.Text.Encoding.UTF8.GetBytes(json);
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.uploadHandler = new UploadHandlerRaw(body);
+                request.SetRequestHeader("Content-Type", "application/json");
+                request.timeout = Mathf.Max(1, requestTimeoutSeconds);
+                yield return request.SendWebRequest();
+
+                bool success = request.result == UnityWebRequest.Result.Success;
+                string detail = request.downloadHandler != null ? request.downloadHandler.text : string.Empty;
+                ReportHttpResult(operationName, request.responseCode, request.error, detail, success);
+
+                if (!success)
+                {
+                    Debug.LogWarning($"[ReachyDaemonTargetWebSocketClient] {FormatHttpResultStatus(operationName, request.responseCode, request.error, detail, false)}");
+                }
+                else if (verboseLogging)
+                {
+                    Debug.Log($"[ReachyDaemonTargetWebSocketClient] {FormatHttpResultStatus(operationName, request.responseCode, request.error, detail, true)} sent to {url}");
+                }
+            }
+        }
+
+        private void ReportHttpRequest(string operationName, string url, string body)
+        {
+            HttpRequestStarted?.Invoke(new DaemonHttpRequest(operationName, url, body));
+        }
+
+        private void ReportHttpResult(
+            string operationName,
+            long responseCode,
+            string error,
+            string detail,
+            bool success)
+        {
+            HttpRequestCompleted?.Invoke(new DaemonHttpResult(
+                operationName,
+                responseCode,
+                error,
+                detail,
+                success));
+        }
+
+        [Serializable]
+        private sealed class PlaySoundRequest
+        {
+            public string file;
+
+            public PlaySoundRequest(string file)
+            {
+                this.file = file;
             }
         }
 
@@ -476,6 +664,48 @@ namespace ReachyMiniTeleop.Transport
                 this.message = message;
                 this.isWarning = isWarning;
             }
+        }
+
+        public readonly struct DaemonHttpRequest
+        {
+            public readonly string OperationName;
+            public readonly string Url;
+            public readonly string Body;
+
+            public DaemonHttpRequest(string operationName, string url, string body)
+            {
+                OperationName = operationName;
+                Url = url;
+                Body = body;
+            }
+
+            public string StatusMessage => FormatHttpRequestStatus(OperationName, Url);
+        }
+
+        public readonly struct DaemonHttpResult
+        {
+            public readonly string OperationName;
+            public readonly long ResponseCode;
+            public readonly string Error;
+            public readonly string Detail;
+            public readonly bool Success;
+
+            public DaemonHttpResult(
+                string operationName,
+                long responseCode,
+                string error,
+                string detail,
+                bool success)
+            {
+                OperationName = operationName;
+                ResponseCode = responseCode;
+                Error = error;
+                Detail = detail;
+                Success = success;
+            }
+
+            public string StatusMessage =>
+                FormatHttpResultStatus(OperationName, ResponseCode, Error, Detail, Success);
         }
     }
 }
