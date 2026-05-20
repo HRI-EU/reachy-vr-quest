@@ -37,6 +37,8 @@ namespace ReachyMiniTeleop.Transport
 
         [Header("Sound")]
         public string defaultSoundFile = "wake_up.wav";
+        [Min(1)]
+        public int soundRequestTimeoutSeconds = 1;
 
         public event Action<string> OnReceiveData;
         public event Action<bool> ConnectionStateChanged;
@@ -49,23 +51,43 @@ namespace ReachyMiniTeleop.Transport
         private readonly ConcurrentQueue<bool> _connectionStateQueue = new ConcurrentQueue<bool>();
         private readonly ConcurrentQueue<DaemonHttpRequest> _httpRequestQueue = new ConcurrentQueue<DaemonHttpRequest>();
         private readonly ConcurrentQueue<DaemonHttpResult> _httpResultQueue = new ConcurrentQueue<DaemonHttpResult>();
+        private readonly object _httpWorkLock = new object();
         private readonly ManualResetEventSlim _stopSignal = new ManualResetEventSlim(false);
         private readonly AutoResetEvent _sendSignal = new AutoResetEvent(false);
+        private readonly AutoResetEvent _httpWorkSignal = new AutoResetEvent(false);
         private Coroutine _wakeCoroutine;
         private Thread _workerThread;
+        private Thread _httpWorkerThread;
         private volatile bool _running;
         private volatile bool _isConnecting;
         private volatile bool _isAlive;
+        private volatile bool _httpWorkerRunning;
+        private bool _httpWorkInFlight;
+        private bool _hasPendingHttpWork;
+        private DaemonHttpWorkItem _pendingHttpWork;
         private int _workerGeneration;
 
 #if UNITY_EDITOR
         internal Action<string, int> workerLoopOverride;
         internal int sendSignalSetCountForTests;
+        internal Func<Uri, string, int, long> rawHttpResponseCodeOverrideForTests;
+        internal int httpWorkerStartCountForTests;
+        internal int rawHttpPostStartCountForTests;
+        internal int rawHttpPostMaxConcurrentForTests;
+        private int _rawHttpPostActiveCountForTests;
 #endif
 
         public bool IsRunning => _isAlive;
         public bool IsConnectedOrConnecting => _isConnecting || _isAlive;
         public int PendingSendCount => _outgoingQueue.Count;
+        public bool IsSoundHttpRequestInFlight
+        {
+            get
+            {
+                lock (_httpWorkLock)
+                    return _httpWorkInFlight || _hasPendingHttpWork;
+            }
+        }
 
         private void Start()
         {
@@ -108,6 +130,7 @@ namespace ReachyMiniTeleop.Transport
         private void OnDestroy()
         {
             StopClient();
+            StopHttpWorker();
         }
 
         public void SendMessageToServer(string data)
@@ -187,6 +210,19 @@ namespace ReachyMiniTeleop.Transport
 
             PostJson(url, string.Empty, "Stop sound");
         }
+
+#if UNITY_EDITOR
+        internal bool TryGetQueuedSoundHttpWorkForTests(out string operationName, out string url, out string body)
+        {
+            lock (_httpWorkLock)
+            {
+                operationName = _pendingHttpWork.OperationName;
+                url = _pendingHttpWork.Url;
+                body = _pendingHttpWork.Body;
+                return _hasPendingHttpWork;
+            }
+        }
+#endif
 
         public void StartClient()
         {
@@ -619,19 +655,7 @@ namespace ReachyMiniTeleop.Transport
                 return;
             }
 
-            ReportHttpRequest(operationName, url, json);
-
-            int timeoutMilliseconds = Math.Max(1, requestTimeoutSeconds) * 1000;
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                RawHttpResult result = SendRawHttpPost(uri, json, timeoutMilliseconds);
-                ReportHttpResult(
-                    operationName,
-                    result.ResponseCode,
-                    result.Error,
-                    result.Body,
-                    result.Success);
-            });
+            EnqueueRawHttpWork(new DaemonHttpWorkItem(operationName, url, uri, json));
         }
 
         private IEnumerator PostJsonWithUnityWebRequest(string url, string json, string operationName)
@@ -681,6 +705,146 @@ namespace ReachyMiniTeleop.Transport
                 error,
                 detail,
                 success));
+        }
+
+        private void EnqueueRawHttpWork(DaemonHttpWorkItem workItem)
+        {
+            ReportHttpRequest(workItem.OperationName, workItem.Url, workItem.Body);
+
+            lock (_httpWorkLock)
+            {
+                _pendingHttpWork = workItem;
+                _hasPendingHttpWork = true;
+                EnsureHttpWorkerLocked();
+            }
+
+            _httpWorkSignal.Set();
+        }
+
+        private void EnsureHttpWorkerLocked()
+        {
+            if (_httpWorkerThread != null && _httpWorkerThread.IsAlive)
+                return;
+
+            _httpWorkerRunning = true;
+            _httpWorkerThread = new Thread(HttpWorkerLoop)
+            {
+                IsBackground = true,
+                Name = "ReachyDaemonHttpSoundThread"
+            };
+#if UNITY_EDITOR
+            Interlocked.Increment(ref httpWorkerStartCountForTests);
+#endif
+            _httpWorkerThread.Start();
+        }
+
+        private void StopHttpWorker()
+        {
+            _httpWorkerRunning = false;
+            lock (_httpWorkLock)
+            {
+                _hasPendingHttpWork = false;
+                _httpWorkInFlight = false;
+            }
+
+            _httpWorkSignal.Set();
+
+            try
+            {
+                if (_httpWorkerThread != null && _httpWorkerThread.IsAlive && _httpWorkerThread != Thread.CurrentThread)
+                    _httpWorkerThread.Join(1000);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[ReachyDaemonTargetWebSocketClient] HTTP worker stop error: {ex.Message}");
+            }
+            finally
+            {
+                if (_httpWorkerThread != null && !_httpWorkerThread.IsAlive)
+                    _httpWorkerThread = null;
+            }
+        }
+
+        private void HttpWorkerLoop()
+        {
+            while (_httpWorkerRunning)
+            {
+                _httpWorkSignal.WaitOne();
+
+                while (_httpWorkerRunning && TryTakePendingHttpWork(out DaemonHttpWorkItem workItem))
+                {
+                    int timeoutMilliseconds = Math.Max(1, soundRequestTimeoutSeconds) * 1000;
+                    lock (_httpWorkLock)
+                    {
+                        _httpWorkInFlight = true;
+                    }
+
+                    try
+                    {
+                        RawHttpResult result = ExecuteRawHttpPost(workItem.Uri, workItem.Body, timeoutMilliseconds);
+                        ReportHttpResult(
+                            workItem.OperationName,
+                            result.ResponseCode,
+                            result.Error,
+                            result.Body,
+                            result.Success);
+                    }
+                    finally
+                    {
+                        lock (_httpWorkLock)
+                        {
+                            _httpWorkInFlight = false;
+                        }
+                    }
+                }
+            }
+        }
+
+        private bool TryTakePendingHttpWork(out DaemonHttpWorkItem workItem)
+        {
+            lock (_httpWorkLock)
+            {
+                if (!_hasPendingHttpWork)
+                {
+                    workItem = default;
+                    return false;
+                }
+
+                workItem = _pendingHttpWork;
+                _pendingHttpWork = default;
+                _hasPendingHttpWork = false;
+                return true;
+            }
+        }
+
+        private RawHttpResult ExecuteRawHttpPost(Uri uri, string body, int timeoutMilliseconds)
+        {
+#if UNITY_EDITOR
+            int activeCount = Interlocked.Increment(ref _rawHttpPostActiveCountForTests);
+            Interlocked.Increment(ref rawHttpPostStartCountForTests);
+            int currentMax;
+            while (activeCount > (currentMax = rawHttpPostMaxConcurrentForTests))
+                Interlocked.CompareExchange(ref rawHttpPostMaxConcurrentForTests, activeCount, currentMax);
+#endif
+
+            try
+            {
+#if UNITY_EDITOR
+                if (rawHttpResponseCodeOverrideForTests != null)
+                {
+                    long responseCode = rawHttpResponseCodeOverrideForTests(uri, body, timeoutMilliseconds);
+                    bool success = responseCode >= 200 && responseCode <= 299;
+                    return new RawHttpResult(responseCode, success ? string.Empty : $"HTTP {responseCode}", string.Empty, success);
+                }
+#endif
+                return SendRawHttpPost(uri, body, timeoutMilliseconds);
+            }
+            finally
+            {
+#if UNITY_EDITOR
+                Interlocked.Decrement(ref _rawHttpPostActiveCountForTests);
+#endif
+            }
         }
 
         private static RawHttpResult SendRawHttpPost(Uri uri, string body, int timeoutMilliseconds)
@@ -774,7 +938,23 @@ namespace ReachyMiniTeleop.Transport
             }
         }
 
-        private readonly struct RawHttpResult
+        private readonly struct DaemonHttpWorkItem
+        {
+            public readonly string OperationName;
+            public readonly string Url;
+            public readonly Uri Uri;
+            public readonly string Body;
+
+            public DaemonHttpWorkItem(string operationName, string url, Uri uri, string body)
+            {
+                OperationName = operationName;
+                Url = url;
+                Uri = uri;
+                Body = body;
+            }
+        }
+
+        internal readonly struct RawHttpResult
         {
             public readonly long ResponseCode;
             public readonly string Error;

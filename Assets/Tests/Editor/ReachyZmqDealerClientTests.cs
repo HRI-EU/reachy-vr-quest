@@ -410,6 +410,73 @@ namespace ReachyMiniTeleop.Tests.Editor
         }
 
         [Test]
+        public void DaemonPlaySound_UsesSingleHttpWorkerAndCoalescesPendingRequests()
+        {
+            _daemonClient.apiBaseUrl = "http://127.0.0.1:8000/api";
+            using var firstRequestStarted = new ManualResetEventSlim(false);
+            using var releaseRequest = new ManualResetEventSlim(false);
+            int rawCallCount = 0;
+
+            SetDaemonField(
+                "rawHttpResponseCodeOverrideForTests",
+                new Func<Uri, string, int, long>((_, _, _) =>
+                {
+                    int call = Interlocked.Increment(ref rawCallCount);
+                    if (call == 1)
+                    {
+                        firstRequestStarted.Set();
+                        releaseRequest.Wait(1000);
+                    }
+
+                    return 200;
+                }));
+
+            _daemonClient.PlaySound("count.wav");
+            Assert.IsTrue(firstRequestStarted.Wait(1000));
+
+            _daemonClient.PlaySound("dance1.wav");
+            _daemonClient.PlaySound("wake_up.wav");
+
+            Assert.IsTrue(InvokeTryGetQueuedSoundHttpWork(out _, out _, out string pendingBody));
+            StringAssert.Contains("wake_up.wav", pendingBody);
+
+            releaseRequest.Set();
+            WaitUntil(() => GetDaemonField<int>("rawHttpPostStartCountForTests") >= 2, 1000);
+
+            Assert.AreEqual(1, GetDaemonField<int>("httpWorkerStartCountForTests"));
+            Assert.AreEqual(1, GetDaemonField<int>("rawHttpPostMaxConcurrentForTests"));
+            Assert.LessOrEqual(GetDaemonField<int>("rawHttpPostStartCountForTests"), 2);
+        }
+
+        [Test]
+        public void DaemonPlaySound_ReportsHttpResultOnMainThreadUpdate()
+        {
+            _daemonClient.apiBaseUrl = "http://127.0.0.1:8000/api";
+            SetDaemonField(
+                "rawHttpResponseCodeOverrideForTests",
+                new Func<Uri, string, int, long>((_, _, _) => 200));
+
+            bool receivedResult = false;
+            _daemonClient.HttpRequestCompleted += result =>
+            {
+                receivedResult = result.Success && result.ResponseCode == 200;
+            };
+
+            _daemonClient.PlaySound("count.wav");
+            WaitUntil(() => GetDaemonField<int>("rawHttpPostStartCountForTests") >= 1, 1000);
+
+            Assert.IsFalse(receivedResult);
+
+            WaitUntil(() =>
+            {
+                InvokeDaemonUpdate();
+                return receivedResult;
+            }, 1000);
+
+            Assert.IsTrue(receivedResult);
+        }
+
+        [Test]
         public void DaemonWorker_DequeuesNewestPayloadOnly()
         {
             _daemonClient.SendMessageToServer("{\"n\":1}");
@@ -475,6 +542,21 @@ namespace ReachyMiniTeleop.Tests.Editor
             return result;
         }
 
+        private bool InvokeTryGetQueuedSoundHttpWork(out string operationName, out string url, out string body)
+        {
+            MethodInfo method = typeof(ReachyDaemonTargetWebSocketClient).GetMethod(
+                "TryGetQueuedSoundHttpWorkForTests",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(method, "Missing private TryGetQueuedSoundHttpWorkForTests method.");
+
+            object[] args = { null, null, null };
+            bool result = (bool)method.Invoke(_daemonClient, args);
+            operationName = (string)args[0];
+            url = (string)args[1];
+            body = (string)args[2];
+            return result;
+        }
+
         private void InvokeDaemonUpdate()
         {
             MethodInfo update = typeof(ReachyDaemonTargetWebSocketClient).GetMethod(
@@ -507,6 +589,20 @@ namespace ReachyMiniTeleop.Tests.Editor
             Thread worker = GetDaemonField<Thread>("_workerThread");
             if (worker != null)
                 worker.Join(1000);
+        }
+
+        private static void WaitUntil(Func<bool> predicate, int timeoutMilliseconds)
+        {
+            DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMilliseconds);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (predicate())
+                    return;
+
+                Thread.Sleep(10);
+            }
+
+            Assert.Fail("Timed out waiting for condition.");
         }
     }
 }

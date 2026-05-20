@@ -141,5 +141,11 @@ namespace ReachyMiniTeleop.Tests.Editor
         {
             Assert.AreEqual("Face sound: cooldown", ReachyFaceSoundTrigger.FormatCooldownStatus());
         }
+
+        [Test]
+        public void FormatRequestPendingStatus_UsesDiagnosticText()
+        {
+            Assert.AreEqual("Face sound: request pending", ReachyFaceSoundTrigger.FormatRequestPendingStatus());
+        }
     }
 }

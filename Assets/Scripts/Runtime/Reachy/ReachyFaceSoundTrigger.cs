@@ -25,8 +25,12 @@ namespace ReachyMiniTeleop.Reachy
         public bool showDebugStatus = true;
         [Min(0.1f)]
         public float statusMessageSeconds = 2f;
+        public bool showHttpResultStatus = true;
+        [Min(0.1f)]
+        public float httpResultStatusSeconds = 0.75f;
         [Min(0.05f)]
         public float statusPollIntervalSeconds = 0.25f;
+        public bool waitForSoundRequestCompletion = true;
 
         private TriggerGate[] _gates;
         private ReachyDaemonTargetWebSocketClient _subscribedDaemonClient;
@@ -102,6 +106,12 @@ namespace ReachyMiniTeleop.Reachy
             if (!faceExpressions.ValidExpressions)
             {
                 ShowPollingStatus(FormatNoValidExpressionsStatus(), now);
+                return;
+            }
+
+            if (waitForSoundRequestCompletion && daemonClient.IsSoundHttpRequestInFlight)
+            {
+                ShowPollingStatus(FormatRequestPendingStatus(), now);
                 return;
             }
 
@@ -202,7 +212,8 @@ namespace ReachyMiniTeleop.Reachy
             if (!string.Equals(result.OperationName, "Face sound", StringComparison.Ordinal))
                 return;
 
-            ShowStatus(result.StatusMessage, Time.unscaledTime, true);
+            if (showHttpResultStatus)
+                ShowStatus(result.StatusMessage, Time.unscaledTime, true, httpResultStatusSeconds);
         }
 
         private void ShowPollingStatus(string message, float now)
@@ -215,12 +226,21 @@ namespace ReachyMiniTeleop.Reachy
 
         private void ShowStatus(string message, float now, bool hold)
         {
+            ShowStatus(message, now, hold, statusMessageSeconds);
+        }
+
+        private void ShowStatus(string message, float now, bool hold, float holdSeconds)
+        {
             LastStatusMessage = message;
-            if (showDebugStatus && statusLabel != null)
+            if (showDebugStatus &&
+                statusLabel != null &&
+                !string.Equals(statusLabel.text, message, StringComparison.Ordinal))
+            {
                 statusLabel.text = message;
+            }
 
             if (hold)
-                _statusHoldUntil = now + Mathf.Max(0.1f, statusMessageSeconds);
+                _statusHoldUntil = now + Mathf.Max(0.1f, holdSeconds);
 
             _nextPollStatusAt = now + Mathf.Max(0.05f, statusPollIntervalSeconds);
         }
@@ -334,6 +354,11 @@ namespace ReachyMiniTeleop.Reachy
         public static string FormatCooldownStatus()
         {
             return "Face sound: cooldown";
+        }
+
+        public static string FormatRequestPendingStatus()
+        {
+            return "Face sound: request pending";
         }
 
         private static string FormatWeight(float weight)
