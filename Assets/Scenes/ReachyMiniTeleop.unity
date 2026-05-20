@@ -226,7 +226,7 @@ MonoBehaviour:
   statusLabel: {fileID: 0}
   autoFindReferences: 1
   triggerEnabled: 1
-  globalCooldownSeconds: 10
+  globalCooldownSeconds: 8
   bindings:
   - expression: 24
     soundFile: count.wav
@@ -247,7 +247,7 @@ MonoBehaviour:
   showDebugStatus: 1
   statusMessageSeconds: 2
   showHttpResultStatus: 1
-  httpResultStatusSeconds: 0.75
+  httpResultStatusSeconds: 2
   statusPollIntervalSeconds: 0.25
   waitForSoundRequestCompletion: 1
 --- !u!1 &2000
