@@ -160,7 +160,9 @@ In Quest builds, `localhost` means the headset, not the PC. Use the PC or robot 
 - `PlayDefaultSound()` plays the serialized `defaultSoundFile`, which defaults to `wake_up.wav`.
 - `StopSound()` posts to `http://<host>:<pose-port>/api/media/stop_sound`.
 
-In Quest builds, daemon media `http://` POSTs are sent through the client's raw TCP HTTP sender. This avoids a Quest-side `UnityWebRequest` issue seen with Reachy Lite where the pose WebSocket to the same host/port worked but the media REST request did not complete. The raw HTTP path uses one serial worker with latest-only pending sound requests so expression jitter cannot create parallel HTTP posts. The UI reports both the request and daemon result, for example `Face sound request: ...` followed by `Face sound HTTP 200: ok`.
+In Quest builds, daemon media `http://` POSTs are sent through the client's raw TCP HTTP sender. This avoids a Quest-side `UnityWebRequest` issue seen with Reachy Lite where the pose WebSocket to the same host/port worked but the media REST request did not complete. The raw HTTP path uses one serial worker with latest-only pending sound requests so expression jitter cannot create parallel HTTP posts.
+
+`ReachyDaemonTargetWebSocketClient.soundEnabled` can be turned off at runtime for A/B testing. This is useful when checking whether media playback is the source of video delay.
 
 These methods are public so they can be called from UnityEvents, buttons, or gesture trigger scripts. The `file` value can be a built-in Reachy Mini asset filename such as `wake_up.wav`, `go_sleep.wav`, `impatient1.wav`, `confused1.wav`, `count.wav`, or `dance1.wav`; it can also be a daemon-side absolute path or a filename uploaded to the daemon sound temp directory.
 
@@ -171,11 +173,15 @@ These methods are public so they can be called from UnityEvents, buttons, or ges
 - `BrowLowererL` -> `confused1.wav`
 - `TongueOut` -> `impatient1.wav`
 
-Each mapping fires when the expression weight crosses its trigger threshold, rearms after it falls below its reset threshold, and shares a global cooldown to avoid repeated sound spam.
+Each mapping fires when the expression weight crosses its trigger threshold, rearms after it falls below its reset threshold, and shares one `globalCooldownSeconds` value to avoid repeated sound spam. The main scene uses `globalCooldownSeconds = 10`, which is the current Quest/Reachy Lite stable value. `showHttpResultStatus` is disabled in the scene by default so HTTP result text does not churn the in-headset UI; enable it temporarily when debugging daemon responses.
+
+`WebRTCClient.logVideoDiagnostics` can be enabled while profiling. It logs the approximate `OnVideoReceived` callback rate once per second plus the main-thread action queue length, without changing video decode or texture binding behavior.
 
 For Quest Pro builds, face tracking support is set to `Supported`, visual face tracking is enabled, audio face tracking is disabled, and `OVRManager` requests face tracking permission on startup.
 
 For Reachy Lite, enter the PC LAN IP in `Robot IP`, not `localhost`; `localhost` on Quest is the headset. If the UI shows `Face sound HTTP 200: ok` but the robot is silent, the app reached the daemon and the next checks are the daemon media status, system volume, and `Reachy Mini Audio` output device on the PC.
+
+If each sound request makes the video stream fall further behind, first suspect Reachy Lite PC-side media/audio/GStreamer contention. Test by keeping Quest video running and calling `/api/media/play_sound` from PowerShell every 5-10 seconds. If that also increases video latency, increase `globalCooldownSeconds` or disable `soundEnabled` during teleop-critical sessions before changing the face-expression mapping. To tune interaction feel, lower `globalCooldownSeconds` from 10 in small steps and re-test on Quest.
 
 ## Daemon Pose Wire Format
 

@@ -36,6 +36,7 @@ namespace ReachyMiniTeleop.Transport
         public int requestTimeoutSeconds = 3;
 
         [Header("Sound")]
+        public bool soundEnabled = true;
         public string defaultSoundFile = "wake_up.wav";
         [Min(1)]
         public int soundRequestTimeoutSeconds = 1;
@@ -185,6 +186,12 @@ namespace ReachyMiniTeleop.Transport
 
         public void PlaySound(string file)
         {
+            if (!soundEnabled)
+            {
+                ReportHttpResult("Face sound", 0, "Sound disabled", string.Empty, false);
+                return;
+            }
+
             if (!TryBuildApiEndpointUrl(apiBaseUrl, DefaultPlaySoundPath, out string url))
             {
                 Debug.LogError($"[ReachyDaemonTargetWebSocketClient] Invalid daemon API base URL: {apiBaseUrl}");

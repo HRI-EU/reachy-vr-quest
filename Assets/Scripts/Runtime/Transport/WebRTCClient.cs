@@ -28,6 +28,11 @@ public class WebRTCClient : MonoBehaviour
     [Tooltip("Legacy input field. The in-scene Robot IP field is managed by ReachyVideoInputController.")]
     [SerializeField] private TMP_InputField userInputAddress;
 
+    [Header("Diagnostics")]
+    public bool logVideoDiagnostics = false;
+    [Min(0.25f)]
+    public float videoDiagnosticsIntervalSeconds = 1f;
+
     private RTCPeerConnection pc;
     private RTCDataChannel dataChannel;
     private WebSocket ws;
@@ -41,8 +46,10 @@ public class WebRTCClient : MonoBehaviour
     private string selectedProducerId;
     private int onVideoReceivedCount;
     private float lastOnVideoLogTime;
+    private int lastMainThreadQueueLength;
 
     public bool IsConnectedOrConnecting => isConnecting || (ws != null && ws.IsAlive);
+    public int LastMainThreadQueueLength => lastMainThreadQueueLength;
     public event Action<bool> ConnectionStateChanged;
 
     private void Start()
@@ -421,9 +428,9 @@ public class WebRTCClient : MonoBehaviour
                         return;
 
                     onVideoReceivedCount++;
-                    if (Time.time - lastOnVideoLogTime > 1f)
+                    if (logVideoDiagnostics && Time.time - lastOnVideoLogTime > Mathf.Max(0.25f, videoDiagnosticsIntervalSeconds))
                     {
-                        Debug.Log($"[RecvUI] OnVideoReceived callback rate ~ {onVideoReceivedCount}/sec");
+                        Debug.Log($"[RecvUI] OnVideoReceived callback rate ~ {onVideoReceivedCount}/sec, mainThreadQueue={lastMainThreadQueueLength}");
                         onVideoReceivedCount = 0;
                         lastOnVideoLogTime = Time.time;
                     }
@@ -550,6 +557,7 @@ public class WebRTCClient : MonoBehaviour
 
     private void Update()
     {
+        lastMainThreadQueueLength = mainThread.Count;
         while (mainThread.TryDequeue(out var action))
         {
             try { action?.Invoke(); }

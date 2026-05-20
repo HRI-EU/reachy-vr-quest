@@ -18,7 +18,7 @@ namespace ReachyMiniTeleop.Reachy
         [Header("Triggering")]
         public bool triggerEnabled = true;
         [Min(0f)]
-        public float globalCooldownSeconds = 2f;
+        public float globalCooldownSeconds = 10f;
         public FaceSoundBinding[] bindings = FaceSoundBinding.CreateDefaults();
 
         [Header("Debug Status")]
@@ -88,6 +88,12 @@ namespace ReachyMiniTeleop.Reachy
             if (daemonClient == null)
             {
                 ShowPollingStatus("Face sound: missing daemon client", now);
+                return;
+            }
+
+            if (!daemonClient.soundEnabled)
+            {
+                ShowPollingStatus("Face sound: transport disabled", now);
                 return;
             }
 

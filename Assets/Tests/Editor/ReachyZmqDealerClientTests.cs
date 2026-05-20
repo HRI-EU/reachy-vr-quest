@@ -205,6 +205,23 @@ namespace ReachyMiniTeleop.Tests.Editor
         }
 
         [Test]
+        public void DaemonPlaySound_DoesNotQueueHttpWorkWhenSoundDisabled()
+        {
+            _daemonClient.soundEnabled = false;
+            bool receivedResult = false;
+            _daemonClient.HttpRequestCompleted += result =>
+            {
+                receivedResult = !result.Success && result.Error == "Sound disabled";
+            };
+
+            _daemonClient.PlaySound("count.wav");
+            InvokeDaemonUpdate();
+
+            Assert.IsTrue(receivedResult);
+            Assert.AreEqual(0, GetDaemonField<int>("httpWorkerStartCountForTests"));
+        }
+
+        [Test]
         public void TryBuildDaemonTargetWebSocketUrlFromHost_UsesCustomPosePort()
         {
             Assert.IsTrue(ReachyEndpointInputController.TryBuildDaemonTargetWebSocketUrlFromHost(

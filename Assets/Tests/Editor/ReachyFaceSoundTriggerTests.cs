@@ -147,5 +147,31 @@ namespace ReachyMiniTeleop.Tests.Editor
         {
             Assert.AreEqual("Face sound: request pending", ReachyFaceSoundTrigger.FormatRequestPendingStatus());
         }
+
+        [Test]
+        public void DefaultGlobalCooldownSeconds_UsesQuestStableValue()
+        {
+            var trigger = new UnityEngine.GameObject("FaceSoundTriggerTest").AddComponent<ReachyFaceSoundTrigger>();
+
+            Assert.AreEqual(10f, trigger.globalCooldownSeconds);
+
+            UnityEngine.Object.DestroyImmediate(trigger.gameObject);
+        }
+
+        [Test]
+        public void TriggerGate_RespectsTenSecondCooldownUntilRearmed()
+        {
+            var gate = new ReachyFaceSoundTrigger.TriggerGate();
+            const float cooldownUntil = 20f;
+
+            Assert.IsTrue(gate.Evaluate(0.8f, true, 0.75f, 0.45f, 10f, 0f));
+            Assert.IsFalse(gate.Evaluate(0.2f, true, 0.75f, 0.45f, 11f, cooldownUntil));
+            Assert.IsTrue(gate.IsArmed);
+            Assert.IsFalse(gate.Evaluate(0.8f, true, 0.75f, 0.45f, 19f, cooldownUntil));
+            Assert.IsFalse(gate.IsArmed);
+            Assert.IsFalse(gate.Evaluate(0.2f, true, 0.75f, 0.45f, 20.5f, cooldownUntil));
+            Assert.IsTrue(gate.IsArmed);
+            Assert.IsTrue(gate.Evaluate(0.8f, true, 0.75f, 0.45f, 21f, cooldownUntil));
+        }
     }
 }
