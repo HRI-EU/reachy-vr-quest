@@ -186,9 +186,14 @@ namespace ReachyMiniTeleop.Transport
 
         public void PlaySound(string file)
         {
+            PlaySound(file, "Face sound");
+        }
+
+        public void PlaySound(string file, string operationName)
+        {
             if (!soundEnabled)
             {
-                ReportHttpResult("Face sound", 0, "Sound disabled", string.Empty, false);
+                ReportHttpResult(operationName, 0, "Sound disabled", string.Empty, false);
                 return;
             }
 
@@ -204,7 +209,7 @@ namespace ReachyMiniTeleop.Transport
                 return;
             }
 
-            PostJson(url, json, "Face sound");
+            PostJson(url, json, operationName);
         }
 
         public void StopSound()

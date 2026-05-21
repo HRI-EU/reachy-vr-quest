@@ -17,6 +17,7 @@ namespace ReachyMiniTeleop.Reachy
 
         [Header("Triggering")]
         public bool triggerEnabled = true;
+        public bool suppressUnavailableStatusWhenControllerTriggerIsActive = true;
         [Min(0f)]
         public float globalCooldownSeconds = 10f;
         public FaceSoundBinding[] bindings = FaceSoundBinding.CreateDefaults();
@@ -99,6 +100,9 @@ namespace ReachyMiniTeleop.Reachy
 
             if (faceExpressions == null)
             {
+                if (ShouldSuppressUnavailableTrackingStatus())
+                    return;
+
                 ShowPollingStatus("Face tracking: missing OVRFaceExpressions", now);
                 return;
             }
@@ -111,6 +115,9 @@ namespace ReachyMiniTeleop.Reachy
 
             if (!faceExpressions.ValidExpressions)
             {
+                if (ShouldSuppressUnavailableTrackingStatus())
+                    return;
+
                 ShowPollingStatus(FormatNoValidExpressionsStatus(), now);
                 return;
             }
@@ -193,6 +200,15 @@ namespace ReachyMiniTeleop.Reachy
             _subscribedDaemonClient = daemonClient;
             _subscribedDaemonClient.HttpRequestStarted += OnDaemonHttpRequestStarted;
             _subscribedDaemonClient.HttpRequestCompleted += OnDaemonHttpRequestCompleted;
+        }
+
+        private bool ShouldSuppressUnavailableTrackingStatus()
+        {
+            if (!suppressUnavailableStatusWhenControllerTriggerIsActive)
+                return false;
+
+            ReachyControllerSoundTrigger controllerTrigger = FindFirstObjectByType<ReachyControllerSoundTrigger>();
+            return controllerTrigger != null && controllerTrigger.enabled && controllerTrigger.triggerEnabled;
         }
 
         private void ClearDaemonSubscription()

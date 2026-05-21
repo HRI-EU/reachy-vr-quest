@@ -132,6 +132,7 @@ GameObject:
   - component: {fileID: 1003}
   - component: {fileID: 1004}
   - component: {fileID: 1006}
+  - component: {fileID: 1007}
   m_Layer: 0
   m_Name: ReachyTeleopRuntime
   m_TagString: Untagged
@@ -164,7 +165,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: aaaaaaaa000000000000000000000003, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: 
   skeletonProviderBehaviour: {fileID: 3003}
   messageSenderBehaviour: {fileID: 1005}
@@ -226,6 +227,7 @@ MonoBehaviour:
   statusLabel: {fileID: 0}
   autoFindReferences: 1
   triggerEnabled: 1
+  suppressUnavailableStatusWhenControllerTriggerIsActive: 1
   globalCooldownSeconds: 8
   bindings:
   - expression: 24
@@ -248,6 +250,49 @@ MonoBehaviour:
   statusMessageSeconds: 2
   showHttpResultStatus: 1
   httpResultStatusSeconds: 2
+  statusPollIntervalSeconds: 0.25
+  waitForSoundRequestCompletion: 1
+--- !u!114 &1007
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d9463e9bb8764d349b0cc8f82d8f59bc, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::ReachyMiniTeleop.Reachy.ReachyControllerSoundTrigger
+  daemonClient: {fileID: 1005}
+  statusLabel: {fileID: 0}
+  autoFindReferences: 1
+  triggerEnabled: 1
+  globalCooldownSeconds: 1
+  triggerThreshold: 0.7
+  resetThreshold: 0.35
+  useOvrInputFallback: 1
+  bindings:
+  - direction: 1
+    soundFile: wake_up.wav
+  - direction: 2
+    soundFile: go_sleep.wav
+  - direction: 3
+    soundFile: impatient1.wav
+  - direction: 4
+    soundFile: confused1.wav
+  - direction: 5
+    soundFile: count.wav
+  - direction: 6
+    soundFile: dance1.wav
+  - direction: 7
+    soundFile: wake_up.wav
+  - direction: 8
+    soundFile: go_sleep.wav
+  showDebugStatus: 1
+  statusMessageSeconds: 2
+  showHttpResultStatus: 1
+  httpResultStatusSeconds: 0.75
   statusPollIntervalSeconds: 0.25
   waitForSoundRequestCompletion: 1
 --- !u!1 &2000
@@ -432,7 +477,7 @@ PrefabInstance:
       objectReference: {fileID: 1158962127}
     - target: {fileID: 3903482226883268838, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4148778239110795873, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
       propertyPath: m_Name

@@ -175,6 +175,21 @@ These methods are public so they can be called from UnityEvents, buttons, or ges
 
 Each mapping fires when the expression weight crosses its trigger threshold, rearms after it falls below its reset threshold, and shares one `globalCooldownSeconds` value to avoid repeated sound spam. The main scene uses `globalCooldownSeconds = 10`, which is the current Quest/Reachy Lite stable value. `showHttpResultStatus` is disabled in the scene by default so HTTP result text does not churn the in-headset UI; enable it temporarily when debugging daemon responses.
 
+`ReachyControllerSoundTrigger` maps Quest controller thumbstick directions to one-shot sound triggers for Quest 3 and other headsets without face tracking. It reads `UnityEngine.XR.InputDevices` `CommonUsages.primary2DAxis` first and falls back to Meta `OVRInput` thumbstick values, so it does not require `com.unity.inputsystem` or OpenXR dpad bindings. The main scene wires it to `ReachyTeleopRuntime` with `triggerThreshold = 0.7`, `resetThreshold = 0.35`, and `globalCooldownSeconds = 1`.
+
+- `LeftUp` -> `wake_up.wav`
+- `LeftDown` -> `go_sleep.wav`
+- `LeftLeft` -> `impatient1.wav`
+- `LeftRight` -> `confused1.wav`
+- `RightUp` -> `count.wav`
+- `RightDown` -> `dance1.wav`
+- `RightLeft` -> `wake_up.wav`
+- `RightRight` -> `go_sleep.wav`
+
+Each direction fires once when the stick crosses the threshold, then rearms only after the stick returns to the center deadzone. Leave a direction's `soundFile` empty in the Inspector to disable that trigger. Controller-triggered sounds still use the same serial/latest-only daemon media POST path and respect `ReachyDaemonTargetWebSocketClient.soundEnabled`.
+
+The main teleop scene reserves Quest thumbsticks for these sound shortcuts. The Meta Interaction SDK `Locomotor` building block is intentionally inactive so left/right/up/down stick input does not translate or rotate the local XR rig while driving Reachy. On Quest 3, invalid face tracking status is suppressed while the controller trigger is active so the sound trigger request/result remains visible in the status label.
+
 `WebRTCClient.logVideoDiagnostics` can be enabled while profiling. It logs the approximate `OnVideoReceived` callback rate once per second plus the main-thread action queue length, without changing video decode or texture binding behavior.
 
 For Quest Pro builds, face tracking support is set to `Supported`, visual face tracking is enabled, audio face tracking is disabled, and `OVRManager` requests face tracking permission on startup.
