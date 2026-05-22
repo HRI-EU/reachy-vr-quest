@@ -165,7 +165,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: aaaaaaaa000000000000000000000003, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: 
   skeletonProviderBehaviour: {fileID: 3003}
   messageSenderBehaviour: {fileID: 1005}
@@ -262,13 +262,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d9463e9bb8764d349b0cc8f82d8f59bc, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ReachyMiniTeleop.Reachy.ReachyControllerSoundTrigger
   daemonClient: {fileID: 1005}
   statusLabel: {fileID: 0}
   autoFindReferences: 1
   triggerEnabled: 1
-  globalCooldownSeconds: 1
+  globalCooldownSeconds: 6
   triggerThreshold: 0.7
   resetThreshold: 0.35
   useOvrInputFallback: 1
@@ -290,7 +290,7 @@ MonoBehaviour:
   - direction: 8
     soundFile: go_sleep.wav
   showDebugStatus: 1
-  statusMessageSeconds: 2
+  statusMessageSeconds: 4
   showHttpResultStatus: 1
   httpResultStatusSeconds: 0.75
   statusPollIntervalSeconds: 0.25
