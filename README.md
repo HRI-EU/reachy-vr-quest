@@ -51,11 +51,11 @@ The Quest app builds the endpoints automatically:
 
 For a complete walkthrough, watch the tutorial:
 <div align="center">
-  <a href="https://youtu.be/VtxTDMwYo5g">
+  <a href="https://youtu.be/_nH1GaioedM">
     <img src="https://img.youtube.com/vi/VtxTDMwYo5g/maxresdefault.jpg" alt="Watch the Reachy Mini Quest Teleop tutorial on YouTube" width="720">
   </a>
   <br>
-  <a href="https://youtu.be/VtxTDMwYo5g">Watch the tutorial on YouTube</a>
+  <a href="https://youtu.be/_nH1GaioedM">Watch the tutorial on YouTube</a>
 </div>
 
 ## Unity Version
