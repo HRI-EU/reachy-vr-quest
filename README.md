@@ -24,7 +24,7 @@ Use these steps to run teleoperation with a real Reachy Mini.
 
 ### Step 1: Install the Meta Quest app
 
-Build the APK from this Unity project, or download the prebuilt **ReachyMiniTeleop-ws.apk** from this [Google Drive folder](https://drive.google.com/drive/folders/1pSU0CAmdK5ABUaZemj59tIp-4yxSqrfb?usp=sharing).
+Build the APK from this Unity project, or download the prebuilt **ReachyMiniTeleop.apk** from this [Google Drive folder](https://drive.google.com/drive/folders/1pSU0CAmdK5ABUaZemj59tIp-4yxSqrfb?usp=sharing).
 
 ### Step 2: Start the robot daemon
 
