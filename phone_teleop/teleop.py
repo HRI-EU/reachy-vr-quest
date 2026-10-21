@@ -273,8 +273,10 @@ class RobotLink:
     _ws: object = field(default=None, repr=False)
     _http: httpx.AsyncClient | None = field(default=None, repr=False)
     _tasks: list = field(default_factory=list, repr=False)
-    # Bumped by actions so polls that started before an action are discarded.
-    _epoch: int = field(default=0, repr=False)
+    # Actions in flight block motion, and only polls started after the last action
+    # finished may overwrite state (earlier ones predate the action's effect).
+    _actions_in_flight: int = field(default=0, repr=False)
+    _last_action_done: float = field(default=-math.inf, repr=False)
 
     @property
     def ws_url(self) -> str:
@@ -365,10 +367,9 @@ class RobotLink:
 
     async def _poll_loop(self) -> None:
         while True:
-            epoch = self._epoch
             try:
                 state = await self.fetch_state()
-                if epoch == self._epoch:
+                if self._actions_in_flight == 0 and state.requested_at > self._last_action_done:
                     self.state = state
             except asyncio.CancelledError:
                 raise
@@ -382,6 +383,8 @@ class RobotLink:
         st = self.state
         if not self.connected:
             return "no daemon connection"
+        if self._actions_in_flight:
+            return "action in progress"
         if st is None or now - st.requested_at > STATE_STALE_S:
             return "robot state unknown"
         if st.motors != "enabled":
@@ -403,9 +406,9 @@ class RobotLink:
         if path is None:
             raise ValueError(f"unknown action {name!r}")
         assert self._http is not None
-        # Block motion right away (don't wait for the next poll to notice the move),
-        # and drop any poll already in flight: it predates this action.
-        self._epoch += 1
+        # Block motion right away, until a poll started after the POST returns
+        # shows the daemon's real state (move running, motors off, ...).
+        self._actions_in_flight += 1
         if self.state is not None:
             self.state.moving = self.state.moving or name in ("wake_up", "goto_sleep")
             if name == "motors_off":
@@ -414,7 +417,8 @@ class RobotLink:
             response = await self._http.post(path)
             response.raise_for_status()
         finally:
-            self._epoch += 1
+            self._actions_in_flight -= 1
+            self._last_action_done = time.monotonic()
         try:
             return response.json()
         except ValueError:
@@ -466,7 +470,12 @@ async def control_loop(controller: TeleopController, link: RobotLink, on_sent=No
 
         target = None if blocked else controller.tick(now, dt)
         if target is not None:
-            history.append((now, controller.cmd.copy(), controller.pos.copy()))
+            # Record what was actually sent (after enforce()), not cmd: enforce() may
+            # clamp yaw to body +-65 deg, and the robot correctly stops there.
+            sent = np.array(target["target_head_pose"]["m"]).reshape(4, 4)
+            sent_rpy = np.array(pose_math.matrix_to_rpy(sent[:3, :3]))
+            sent_rpy[2] = pose_math.unwrap_angle(sent_rpy[2], controller.cmd[2])
+            history.append((now, sent_rpy, sent[:3, 3].copy()))
             del history[:-100]
             if await link.send_target(target) and on_sent:
                 on_sent(target)

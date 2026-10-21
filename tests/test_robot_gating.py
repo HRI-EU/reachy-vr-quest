@@ -193,14 +193,16 @@ async def test_divergence_resyncs_when_robot_moved_elsewhere(teleop):
         p.stream(held=True, a=A0 + 10.0)
         await wait_for(lambda: abs(math.degrees(d.head["yaw"]) - 10) < 0.5, timeout=4)
         d.follow = False
+        n = len(d.frames)  # index at the push: the re-sync starts somewhere after this
         d.head["yaw"] = math.radians(-50.0)  # pushed by hand / another controller
-        await wait_for(lambda: "stopped following" in statuses(p)[-1]["error"], timeout=2)
+        await wait_for(lambda: "stopped following" in statuses(p)[-1]["error"], timeout=3)
         d.follow = True
-        n = len(d.frames)
         await wait_for(lambda: len(d.frames) > n + 10)
-        # re-synced from -50 (some frames before the re-sync may still say ~10)
-        firsts = [math.degrees(frame_rpy_body(f)[0][2]) for f in d.frames[n:]]
-        i = next(i for i, y in enumerate(firsts) if y < -40)
+        yaws = [math.degrees(frame_rpy_body(f)[0][2]) for f in d.frames[n:]]
+        # Frames before the re-sync still say ~10; the re-sync restarts exactly at -50.
+        i = next(i for i, y in enumerate(yaws) if y < 0)
+        assert yaws[i] == pytest.approx(-50.0, abs=0.5), yaws[max(0, i - 2):i + 3]
+        assert all(abs(y - 10) < 1.0 for y in yaws[:i])
         assert max_step_deg(d.frames[n + i:]) <= 60 * PERIOD * 1.5
 
 
@@ -478,3 +480,61 @@ def test_translation_ramp_unit():
     assert max(steps) <= 40.0 * PERIOD + 1e-9
     assert np.allclose(last, 0)
     assert sum(steps) == pytest.approx(50.0)  # straight line, no overshoot
+
+
+# --- action bookkeeping (round 4) ---------------------------------------------------
+
+async def _resumes_after_failed_action(teleop, p, d, msg, expect_ok):
+    await calibrated_and_held(teleop, p)
+    p.stream(held=True, a=A0 + 10.0)
+    await wait_for(lambda: len(d.frames) > 5)
+    k = len(p.of("action"))
+    await p.send(msg)
+    await wait_for(lambda: len(p.of("action")) > k, timeout=5)
+    r = p.of("action")[-1]
+    assert r["ok"] is expect_ok, r
+    assert teleop.link._actions_in_flight == 0
+    n = len(d.frames)
+    await wait_for(lambda: len(d.frames) > n + 10, timeout=3)  # not blocked forever
+    st = teleop.link.state
+    assert st is not None and st.requested_at > teleop.link._last_action_done  # a fresh poll was taken
+    assert statuses(p)[-1]["blocked"] == ""
+
+
+async def test_action_http_500_unblocks(teleop):
+    d = teleop.daemon
+    d.action_status = 500
+    async with phone(teleop) as p:
+        await _resumes_after_failed_action(teleop, p, d, {"type": "action", "name": "wake_up"}, False)
+
+
+async def test_action_timeout_unblocks(teleop):
+    d = teleop.daemon
+    d.action_delay_s = 2.3  # > httpx timeout (2 s)
+    async with phone(teleop) as p:
+        await _resumes_after_failed_action(teleop, p, d, {"type": "action", "name": "motors_on"}, False)
+
+
+async def test_unknown_action_does_not_block(teleop):
+    d = teleop.daemon
+    async with phone(teleop) as p:
+        await _resumes_after_failed_action(teleop, p, d, {"type": "action", "name": "dance"}, False)
+
+
+async def test_overlapping_actions(teleop):
+    d = teleop.daemon
+    d.action_delay_s = 0.3
+    async with phone(teleop) as p:
+        await calibrated_and_held(teleop, p)
+        await wait_for(lambda: len(d.frames) > 5)
+        await p.send({"type": "action", "name": "motors_on"})
+        await asyncio.sleep(0.15)
+        await p.send({"type": "action", "name": "motors_on"})
+        t0 = time.monotonic()
+        await wait_for(lambda: teleop.link._actions_in_flight == 2, timeout=1)
+        await wait_for(lambda: len(p.of("action")) == 2, timeout=3)
+        t_done = time.monotonic()
+        assert teleop.link._actions_in_flight == 0
+        assert [t for t in d.frame_times if t0 < t < t_done] == []
+        n = len(d.frames)
+        await wait_for(lambda: len(d.frames) > n + 5, timeout=3)

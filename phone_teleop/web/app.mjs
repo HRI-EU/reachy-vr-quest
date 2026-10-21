@@ -159,7 +159,10 @@ function setupButtons() {
     statsVisible = !statsVisible;
     $("stats").hidden = !statsVisible;
     $("lagClock").hidden = !statsVisible;
-    if (statsVisible) requestAnimationFrame(drawLagClock);
+    if (statsVisible && !lagClockRunning) {
+      lagClockRunning = true;
+      requestAnimationFrame(drawLagClock);
+    }
   };
   $("btnVideo").onclick = () => {
     if (videoState === "off") {
@@ -175,8 +178,12 @@ function setupButtons() {
 // ---- stats ------------------------------------------------------------------
 // Laptop-synced ms clock (mod 10 s). Point the robot camera at /clock on the laptop: one
 // iPhone screenshot then shows both, and lag = this clock - the clock seen in the video.
+let lagClockRunning = false; // one rAF loop at most, however fast Stats is toggled
 function drawLagClock() {
-  if (!statsVisible) return;
+  if (!statsVisible) {
+    lagClockRunning = false;
+    return;
+  }
   const t = clock.serverNow(epochNow());
   $("lagClock").textContent = t === null ? "sync…" : String(Math.floor(t) % 10000).padStart(4, "0");
   requestAnimationFrame(drawLagClock);
