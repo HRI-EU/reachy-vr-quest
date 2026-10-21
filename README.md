@@ -14,48 +14,72 @@ iPhone Safari (HTTPS page)
 
 The laptop is required because Safari only exposes motion sensors on HTTPS pages, and an HTTPS page can't open the daemon's plain `ws://` ports. The laptop serves the page over HTTPS with a certificate authority it creates itself, and relays poses and signaling. Video goes directly from the robot to the phone.
 
-## Setup (once)
+## Run it: step by step
 
-```bash
-python3.12 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-```
+The examples use this setup: robot at `192.168.50.95`, laptop at `192.168.50.62` on the robot's router. Replace them with your own addresses if they differ. iPhone menu names are given in English, with Dutch in brackets.
 
-Check that the laptop can reach the robot. This should print a number:
+### A. One-time setup (laptop)
 
-```bash
-curl http://192.168.50.95:8000/api/state/present_body_yaw
-```
+1. Open Terminal and go to the repo:
+   ```bash
+   cd ~/ReachyTeleop
+   ```
+2. Create the Python environment and install the dependencies (skip this if `.venv/` already exists):
+   ```bash
+   python3.12 -m venv .venv
+   .venv/bin/pip install -r requirements.txt
+   ```
 
-On macOS, if Terminal or Python asks for **Local Network** access, allow it; without it, connections to the robot fail with "No route to host". The **iPhone must join the robot's network** (the same subnet as the robot, e.g. 192.168.50.x). The laptop can be on two networks at once, for example wired to the robot router and on Wi-Fi for the internet.
+### B. One-time setup (iPhone): trust the laptop's certificate
 
-Start it:
+Do this once, with the server running (step C.3).
 
-```bash
-.venv/bin/python -m phone_teleop --robot 192.168.50.95
-```
+1. Connect the iPhone to the **robot's router Wi-Fi**. Check under Settings → Wi-Fi → ⓘ (Instellingen → Wifi → ⓘ) that the IP address starts with `192.168.50.`. If iOS says the network has no internet, stay connected and turn off Mobile Data (Mobiele data).
+2. In Safari, open **`http://192.168.50.62:8080/`**. Note that this is `http` on port `8080`.
+3. Tap **Download certificate**, then **Allow** (Sta toe).
+4. Go to **Settings → Profile Downloaded → Install** (Instellingen → Profiel gedownload → Installeer). Enter your passcode and tap Install again.
+5. Go to **Settings → General → About → Certificate Trust Settings** (Instellingen → Algemeen → Info → Certificaatvertrouwensinstellingen, at the very bottom). Switch on **Reachy Phone Teleop local CA**.
+6. Open Control Center and turn off **Portrait Orientation Lock** (Portretstand-vergrendeling), so the video rotates when you hold the phone sideways.
 
-It prints the URL on the robot's network; use that one on the phone. Every local address, plus `<name>.local`, is in the certificate. On the iPhone, install the certificate once:
+### C. Every time
 
-1. Open `http://<laptop-ip>:8080/` in Safari and tap **Download certificate**, then **Allow**.
-2. Go to **Settings → Profile Downloaded → Install**.
-3. Go to **Settings → General → About → Certificate Trust Settings** and switch on **Reachy Phone Teleop local CA**.
+1. **Power on the robot** and wait 1–2 minutes for it to boot and join the router.
+2. **Check the laptop can reach it.** This should print a number such as `-0.05`:
+   ```bash
+   curl http://192.168.50.95:8000/api/state/present_body_yaw
+   ```
+   If it doesn't, the robot isn't on the network yet. Look it up in the router's device list at `http://192.168.50.1`. If macOS asks whether Terminal or Python may access the **local network**, click **Allow**.
+3. **Start the server**, and leave this Terminal window open:
+   ```bash
+   cd ~/ReachyTeleop
+   .venv/bin/python -m phone_teleop --robot 192.168.50.95
+   ```
+   It prints the phone URL on the robot's network, for example `https://192.168.50.62:4443/`. To stop the server, press `Ctrl+C`.
+4. **On the iPhone**, open the printed `https://…:4443/` URL in Safari. It should load with no warning. Tap **Start**, then **Allow** motion access.
+5. **Wake the robot.** Don't touch the screen area while you do this. Tap **⋯ → Motors on**, so the chip changes from "motors disabled" to "robot". Then tap **⋯ → Wake up**; the chip shows "robot busy" while it moves and turns green when it's done. Keep your hands clear of the robot.
+6. **Center.** Hold the phone in **landscape** in front of your eyes, look straight ahead, and tap **Center**.
+7. **Drive.** Press and hold anywhere on the screen, and the robot's head follows the phone. Let go and it stops where it is. A green border means it's moving; "catching up" means it's still moving slowly to where you're looking.
+8. **Finish.** Tap **⋯ → Sleep** (not while holding), wait for it to finish, then press `Ctrl+C` in the server Terminal.
 
-The CA is stored in `.certs/`, which git ignores, and is reused. If the laptop's IP changes, the server certificate is regenerated automatically and the phone keeps trusting it.
+Tip: in Safari, **Share → Add to Home Screen** (Zet op beginscherm) gives a full-screen app without the toolbars.
 
-## Use
+### Troubleshooting
 
-1. Turn off **Portrait Orientation Lock** in Control Center, or the landscape video shows sideways.
-2. Open `https://<laptop-ip>:4443/` in Safari and tap **Start**, then **Allow** motion access.
-3. If the robot is asleep: **⋯ → Motors on**, then **⋯ → Wake up**, and wait until the robot chip is green. Sleep turns the motors off and Wake up doesn't turn them on, so both are needed.
-4. Hold the phone in **landscape** in front of your eyes, look straight ahead, and tap **Center**.
-5. **Press and hold anywhere on the screen** to make the robot follow. Let go and it stops where it is. A green border means it's moving. "catching up" means it's still moving slowly to where you're looking.
-
-Tip: **Share → Add to Home Screen** gives a full-screen app without Safari's toolbars.
+| What you see | What to do |
+|---|---|
+| `zsh: no such file or directory: robot-ip` | You typed a placeholder. Use the real address, e.g. `192.168.50.95`. |
+| `curl` hangs or says "No route to host" | The robot isn't on the network yet, or macOS blocked Local Network access for Terminal (System Settings → Privacy & Security → Local Network). |
+| `http://…:8080/` doesn't load on the phone | The phone is on the wrong Wi-Fi, or the router isolates Wi-Fi clients (turn off "AP/client isolation"). |
+| Safari says "This connection is not private" (Deze verbinding is niet privé) | The trust switch in B.5 isn't on. |
+| Chip says "motors disabled" | Do C.5: Motors on, then Wake up. |
+| Chip says "tap Center" | Do C.6. You need to do this again after a page reload. |
+| "blocked: …" while holding | The robot can't be moved right now (motors off, a move running, or no robot state). The reason is shown in the chip. |
+| No video | Wait a few seconds. Check the video chip and **⋯ → Stats**. Toggle **⋯ → Video off/on**. |
+| Video shows sideways | Turn off Portrait Orientation Lock (B.6). |
 
 ### Safety
 
-- Every target goes through `phone_teleop/safety_limits.py`, vendored verbatim from `~/EEPY/robot/safety_limits.py`: head pitch/roll ±40°, head yaw ±180°, body yaw ±160°, head-vs-body yaw ≤ 65°.
+- Every target goes through `phone_teleop/safety_limits.py`, vendored from `~/EEPY/robot/safety_limits.py` (identical logic): head pitch/roll ±40°, head yaw ±180°, body yaw ±160°, head-vs-body yaw ≤ 65°.
 - Hold-to-move deadman. Lifting your finger, locking the screen, switching apps, a dropped connection, or no sample for 0.3 s all stop motion, and the robot holds its pose.
 - The laptop polls the robot's motor mode, running daemon moves and present pose 5 times per second. Nothing is sent unless the motors are `enabled` and no move (wake up, sleep, a goto from another app) is running. If the robot's state is unknown for 1 s, motion stops.
 - Each time you engage, or a move ends, or the robot stops following (more than 30° or 15 mm away from what was sent), the server re-reads the robot's present pose, rotation **and** translation, and starts from there. The robot doesn't snap to the phone. It catches up at most 60°/s until it's within 3° of your view, then follows at up to 180°/s per axis. Head translation ramps back to the neutral at 40 mm/s, for example from the sleep pose.

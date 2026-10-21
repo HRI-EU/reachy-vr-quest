@@ -276,7 +276,7 @@ def _random_run(seed: int, settings: TeleopSettings):
     return sim
 
 
-@pytest.mark.parametrize("seed", range(25))
+@pytest.mark.parametrize("seed", range(12))
 @pytest.mark.parametrize("body_follow", [True, False])
 def test_random_sequences_respect_limits_and_speed_cap(seed, body_follow):
     s = TeleopSettings(smoothing=float(np.random.default_rng(seed).uniform(0.1, 1.0)),

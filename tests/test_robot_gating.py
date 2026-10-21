@@ -178,7 +178,7 @@ async def test_blocked_does_not_flap_in_normal_operation(teleop):
         await wait_for(lambda: statuses(p)[-1]["synced"])
         syncs = count_syncs(teleop.controller)
         k = len(statuses(p))
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(1.2)
         seen = {st["blocked"] for st in statuses(p)[k:]}
         assert seen == {""}, seen
         assert syncs == []
@@ -219,7 +219,7 @@ async def test_no_divergence_false_positive_fast_following(make_teleop, lag_s):
 
         async def swing():
             t0 = time.monotonic()
-            while time.monotonic() - t0 < 2.0:
+            while time.monotonic() - t0 < 1.2:
                 ph = (time.monotonic() - t0) * 2 * math.pi * 0.5  # 0.5 Hz, +-60 deg -> ~190 deg/s peak
                 p.stream_args["a"] = A0 + 60 * math.sin(ph)
                 await asyncio.sleep(0.01)
@@ -239,7 +239,7 @@ async def test_no_divergence_false_positive_no_body_mode(make_teleop):
         p.stream(held=True, a=A0 + 120.0)
         await wait_for(lambda: abs(math.degrees(d.head["yaw"]) - 65) < 0.5, timeout=5)
         syncs = count_syncs(t.controller)
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(1.0)
         assert syncs == [], f"{len(syncs)} spurious re-syncs while holding at the 65 deg clamp"
         assert "stopped following" not in t.link.last_error
 

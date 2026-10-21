@@ -276,4 +276,14 @@ async function body() {
   await new Promise((r) => realSetTimeout(r, 1100));
   assert.equal(MockWebSocket.instances.filter((w) => w.url.endsWith("/pose")).length, count);
 
+  // Stats on -> off -> on within one frame must not leave two lag-clock rAF loops running.
+  assert.equal($("stats").hidden, true);
+  $("btnStats").click();
+  $("btnStats").click();
+  $("btnStats").click();
+  await new Promise((r) => realSetTimeout(r, 50));
+  const r0 = rafCalls;
+  await new Promise((r) => realSetTimeout(r, 320));
+  const perSec = (rafCalls - r0) / 0.32;
+  assert.ok(perSec < 80, `lag clock runs ${perSec.toFixed(0)} rAF/s (expected ~60: one loop)`);
 }
