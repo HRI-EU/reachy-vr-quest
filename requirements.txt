@@ -1,0 +1,9 @@
+scipy
+numpy
+cryptography
+httpx
+websockets>=13
+starlette
+uvicorn
+pytest
+pytest-asyncio

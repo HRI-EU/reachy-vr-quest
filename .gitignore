@@ -33,3 +33,9 @@ Thumbs.db
 # Local test outputs
 TestResults.xml
 ReachyEditModeTestSummary.txt
+
+# Phone teleop
+.certs/
+__pycache__/
+.pytest_cache/
+logs/

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Reachy Teleop</title>
+<style>
+  :root { --bg: #000; --fg: #f2f2f2; --muted: #9a9a9a; --ok: #3ccf6e; --warn: #f5b301; --bad: #ff5252; --panel: rgba(0,0,0,.55); }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 15px/1.35 -apple-system, system-ui, sans-serif; overflow: hidden;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none; }
+  video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+  #hold { position: fixed; inset: 0; }
+  #hold.active { box-shadow: inset 0 0 0 6px var(--ok); }
+  .bar { position: fixed; display: flex; gap: 8px; padding: 8px;
+    padding-top: max(8px, env(safe-area-inset-top)); }
+  #top { top: 0; left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right));
+    justify-content: space-between; align-items: flex-start; pointer-events: none; }
+  #top > * { pointer-events: auto; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { background: var(--panel); border-radius: 999px; padding: 4px 10px; font-size: 13px; white-space: nowrap; }
+  .chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); }
+  .buttons { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  button { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid rgba(255,255,255,.25);
+    border-radius: 10px; padding: 8px 12px; min-height: 40px; }
+  button:active { background: rgba(255,255,255,.2); }
+  #hint { position: fixed; bottom: max(14px, env(safe-area-inset-bottom)); left: 0; right: 0; text-align: center;
+    color: var(--muted); pointer-events: none; text-shadow: 0 1px 2px #000; }
+  #stats { position: fixed; left: max(8px, env(safe-area-inset-left)); bottom: max(40px, env(safe-area-inset-bottom));
+    background: var(--panel); border-radius: 10px; padding: 8px 10px; font: 12px/1.4 ui-monospace, Menlo, monospace;
+    white-space: pre; pointer-events: none; }
+  #lagClock { position: fixed; right: max(8px, env(safe-area-inset-right)); bottom: max(40px, env(safe-area-inset-bottom));
+    background: #000; color: #fff; padding: 2px 10px; border-radius: 8px; font: 700 34px/1.2 ui-monospace, Menlo, monospace;
+    pointer-events: none; }
+  #toast { position: fixed; top: 40%; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.8);
+    padding: 10px 16px; border-radius: 10px; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 80vw; text-align: center; }
+  #toast.show { opacity: 1; }
+  #start { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 24px; background: #111; text-align: center; z-index: 10; }
+  #start h1 { margin: 0; font-size: 22px; }
+  #start p { margin: 0; color: var(--muted); max-width: 520px; }
+  #start button { font-size: 18px; padding: 14px 28px; background: #2a6df4; border: 0; }
+  #start .err { color: var(--bad); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<video id="video" autoplay playsinline muted></video>
+<div id="hold"></div>
+
+<div id="top" class="bar">
+  <div class="chips">
+    <span id="chipServer" class="chip bad">server</span>
+    <span id="chipRobot" class="chip bad">robot</span>
+    <span id="chipVideo" class="chip warn">video</span>
+    <span id="chipMove" class="chip">idle</span>
+  </div>
+  <div class="buttons">
+    <button id="btnCenter">Center</button>
+    <button id="btnMenu">⋯</button>
+  </div>
+</div>
+<div id="menu" class="bar" style="top:56px; right:max(8px, env(safe-area-inset-right)); flex-direction:column; align-items:flex-end" hidden>
+  <button data-action="motors_on">Motors on</button>
+  <button data-action="wake_up">Wake up</button>
+  <button data-action="goto_sleep">Sleep</button>
+  <button data-action="motors_off">Motors off</button>
+  <button id="btnVideo">Video off</button>
+  <button id="btnStats">Stats</button>
+</div>
+
+<div id="stats" hidden></div>
+<div id="lagClock" hidden>sync…</div>
+<div id="hint">Hold the phone in landscape in front of your eyes · tap Center · press and hold anywhere to move</div>
+<div id="toast"></div>
+
+<div id="start">
+  <h1>Reachy Mini teleop</h1>
+  <p>Hold the phone in landscape in front of your eyes. Tap <b>Center</b> while looking straight ahead,
+     then <b>press and hold anywhere</b> on the screen to make the robot follow. Let go to stop.</p>
+  <button id="btnStart">Start</button>
+  <p id="startError" class="err" hidden></p>
+  <p>First time: turn off Portrait Orientation Lock (Control Center), then Motors on → Wake up in the ⋯ menu.</p>
+  <p>Tip: Share → Add to Home Screen gives a full-screen app.</p>
+</div>
+
+<script type="module" src="/static/app.mjs"></script>
+</body>
+</html>

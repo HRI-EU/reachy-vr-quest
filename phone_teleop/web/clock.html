@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lag Clock</title>
+<style>
+  :root { --bg: #fff; --fg: #000; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #000; --fg: #fff; } }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: ui-monospace, Menlo, monospace; }
+  #t { font-size: min(18vw, 220px); font-weight: 700; letter-spacing: -0.03em; }
+  p { max-width: 640px; padding: 0 16px; text-align: center; opacity: .7; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="t">0000</div>
+<p>Glass-to-glass lag: point the robot camera at this screen, put the phone (showing the robot video) next to it,
+   and photograph both with a third camera. Lag = this clock − the clock shown on the phone. Shown in ms, mod 10 s.</p>
+<script>
+  const el = document.getElementById("t");
+  const draw = () => { el.textContent = String(Math.floor(performance.timeOrigin + performance.now()) % 10000).padStart(4, "0"); requestAnimationFrame(draw); };
+  draw();
+</script>
+</body>
+</html>
